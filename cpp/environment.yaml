@@ -1,0 +1,9 @@
+name: {{PROJECT_NAME}}
+channels:
+    - conda-forge
+    - nodefaults
+dependencies:
+    # cxx-compiler pulls the platform's toolchain: clang on macOS, gcc on Linux.
+    - cxx-compiler
+    - cmake
+    - ninja

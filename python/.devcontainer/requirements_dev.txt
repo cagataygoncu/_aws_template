@@ -1,0 +1,12 @@
+ipykernel
+pytest
+hypothesis
+cfn-lint
+
+line-profiler
+memory-profiler
+
+pylint
+black
+
+cfnresponse

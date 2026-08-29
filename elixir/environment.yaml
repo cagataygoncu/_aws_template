@@ -1,0 +1,10 @@
+name: {{PROJECT_NAME}}
+channels:
+    - conda-forge
+    - nodefaults
+dependencies:
+    # Same versions as the base image; both come from language_version /
+    # otp_version in make/bootstrap.sh.
+    # conda-forge no longer ships elixir 1.17, which is why both are on 1.19.
+    - elixir={{LANGUAGE_VERSION}}
+    - erlang={{OTP_VERSION}}

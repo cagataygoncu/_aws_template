@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: aws-service-template
+
+Parameters:
+    ImageName:
+        Type: String
+        Default: ''
+    ProjectName:
+        Type: String
+        Default: 'aws-service-template'
+    ServiceName:
+        Type: String
+        Default: 'aws-service-task'
+    ContainerPort:
+        Type: Number
+        Default: {{CONTAINER_PORT}}
+    TaskDefinitionCpu:
+        Type: Number
+        Default: 1024
+    TaskDefinitionMemory:
+        Type: Number
+        Default: 4096
+    S3BucketList:
+        Type: String
+        Default: "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,\
+            arn:aws:s3:::gig-config,arn:aws:s3:::gig-config/*,\
+            arn:aws:s3:::*-laver-cup-*,arn:aws:s3:::*-laver-cup-*/*,\
+            arn:aws:s3:::*-aus-summer-*,arn:aws:s3:::*-aus-summer-*/*"
+    ApiInvokeDomainUrl:
+        Type: String
+        Default: ''
+
+    # The stacks whose exports this service imports - by default both are the
+    # base stack (gig-cfn-templates projects/aolabs/aolabs-base.yaml), which
+    # exports its VPC, subnets and cluster under its ProjectName. Split them
+    # if the cluster ever lives somewhere other than the VPC's own stack.
+    NetworkStackName:
+        Type: String
+        Default: 'aolabs'
+    ClusterStackName:
+        Type: String
+        Default: 'aolabs'
+
+    # Container config in S3. One file per project by convention:
+    #   s3://<ConfigBucket>/<ProjectName>/<ConfigFileName>
+    # The repo's own container_config.env is the file to upload there.
+    # ProjectName is passed in by the pipeline, so the path follows the project
+    # automatically. Set ContainerEnvironmentFileArn to a full ARN to point
+    # somewhere else (a shared file, another bucket). Whatever bucket it names
+    # must also be readable through S3BucketList above.
+    ConfigBucket:
+        Type: String
+        Default: 'gig-config'
+    ConfigFileName:
+        Type: String
+        Default: 'container_config.env'
+    ContainerEnvironmentFileArn:
+        Type: String
+        Default: ''
+
+    # gig-cfn-templates release that every nested stack below is pulled from.
+    # Bump this one value to move the whole target to a new template version.
+    TemplateVersion:
+        Type: String
+        Default: "v1.10.2"
+
+Conditions:
+    HasEnvironmentFileArn: !Not [!Equals [!Ref ContainerEnvironmentFileArn, '']]
+
+Resources:
+    TaskRole:
+        Type: AWS::IAM::Role
+        Properties:
+            RoleName: !Sub '${ProjectName}-TaskRole'
+            AssumeRolePolicyDocument:
+                Statement:
+                    - Effect: Allow
+                      Principal:
+                          Service: ecs-tasks.amazonaws.com
+                      Action: 'sts:AssumeRole'
+            Policies:
+                - PolicyName: dynamodb-access
+                  PolicyDocument:
+                    Version: '2012-10-17'
+                    Statement:
+                      - Effect: Allow
+                        Action: "dynamodb:*"
+                        Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*"
+                      - Effect: Allow
+                        Action:
+                          - dynamodb:DescribeTable
+                          - dynamodb:GetItem
+                          - dynamodb:PutItem
+                          - dynamodb:UpdateItem
+                          - dynamodb:DeleteItem
+                          - dynamodb:Scan
+                          - dynamodb:Query
+                          - dynamodb:BatchGetItem
+                          - dynamodb:BatchWriteItem
+                        Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*"
+                - PolicyName: ecr-access
+                  PolicyDocument:
+                    Version: '2012-10-17'
+                    Statement:
+                    - Effect: Allow
+                      Action:
+                        - "ecr:GetAuthorizationToken"
+                        - "ecr:BatchCheckLayerAvailability"
+                        - "ecr:GetDownloadUrlForLayer"
+                        - "ecr:BatchGetImage"
+                        - "ecr:SetRepositoryPolicy"
+                        - "ecr:GetRepositoryPolicy"
+                      Resource: "*"
+                - PolicyName: vpc-access
+                  PolicyDocument:
+                    Version: 2012-10-17
+                    Statement:
+                    - Effect: Allow
+                      Action:
+                        - 'ec2:DescribeNetworkInterfaces'
+                        - 'ec2:CreateNetworkInterface'
+                        - 'ec2:DeleteNetworkInterface'
+                        - 'ec2:AssignPrivateIpAddresses'
+                        - 'ec2:UnassignPrivateIpAddresses'
+                      Resource:
+                        - '*'
+                - PolicyName: bucket-access
+                  PolicyDocument:
+                      Version: '2012-10-17'
+                      Statement:
+                          - Effect: Allow
+                            Action:
+                                - s3:ListBucket
+                                - s3:*Object
+                            Resource: !Split [',', !Ref S3BucketList]
+                - PolicyName: kms-access
+                  PolicyDocument:
+                    Version: '2012-10-17'
+                    Statement:
+                    - Effect: Allow
+                      Action:
+                        - kms:*
+                      Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
+                - PolicyName: secretmanager-access
+                  PolicyDocument:
+                      Version: '2012-10-17'
+                      Statement:
+                          - Effect: Allow
+                            Action:
+                                - secretsmanager:GetSecretValue
+                            Resource:
+                                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*'
+                - PolicyName: lambda-invoke-access
+                  PolicyDocument:
+                      Version: '2012-10-17'
+                      Statement:
+                          - Effect: Allow
+                            Action:
+                                - lambda:InvokeFunction
+                            Resource:
+                                - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*'
+
+    ServiceStack:
+        Type: AWS::CloudFormation::Stack
+        Properties:
+            TemplateURL: !Sub 'https://gig-cfn-templates.s3.ap-southeast-2.amazonaws.com/${TemplateVersion}/templates/compute/gig-020-000-ecs-srvc.cfn.yaml'
+            Tags:
+                - Key: Name
+                  Value: !Sub '${ProjectName}-Service'
+            Parameters:
+                VpcId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-VpcId'
+                PublicSubnetOneId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-PublicSubnetOneId'
+                PublicSubnetTwoId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-PublicSubnetTwoId'
+                ClusterId: !ImportValue
+                    Fn::Sub: '${ClusterStackName}-ClusterId'
+                TaskRoleArn: !GetAtt TaskRole.Arn
+                ImageName: !Ref ImageName
+                ServiceName: !Ref ServiceName
+                ContainerPort: !Ref ContainerPort
+                # How the container is started. bootstrap.sh fills these in
+                # from the language layer, matching that language's Dockerfile
+                # (where its source lands, and what runs it).
+                ContainerWorkingDirectory: '{{CONTAINER_WORKDIR}}'
+                ContainerEntryPoint: '{{CONTAINER_ENTRYPOINT_TASK}}'
+                ContainerCmd: {{CONTAINER_CMD_TASK}}
+                ContainerEnvironmentFile: !If
+                    - HasEnvironmentFileArn
+                    - !Ref ContainerEnvironmentFileArn
+                    - !Sub 'arn:aws:s3:::${ConfigBucket}/${ProjectName}/${ConfigFileName}'
+                AutoScalingTargetValue: 70
+                ServiceDesiredCount: 1
+                TaskDefinitionCpu: !Ref TaskDefinitionCpu
+                TaskDefinitionMemory: !Ref TaskDefinitionMemory
+
+Outputs:
+    APIInvokeURL:
+        Value: !Sub ${ApiInvokeDomainUrl}/${ServiceName}

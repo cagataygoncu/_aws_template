@@ -1,0 +1,15 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/venv/bin/python",
+    "python.autoComplete.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python{{LANGUAGE_VERSION}}/site-packages"],
+    "python.analysis.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python{{LANGUAGE_VERSION}}/site-packages"],
+    "files.exclude": {
+        "**/*.pyc": {
+            "when": "$(basename).py"
+        },
+        "**/__pycache__": true,
+        "**/*.egg-info": true,
+        "**/*.pytest_cache": true,
+        "**/*.hypothesis": true,
+        "venv": true
+    }
+}

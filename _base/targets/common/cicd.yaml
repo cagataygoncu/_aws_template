@@ -1,0 +1,492 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "aws-service-template-cicd"
+
+####################################################################################
+Parameters:
+  ProjectName:
+    Type: String
+
+  DeploymentCfnFilename:
+    Type: String
+
+  DockerFilename:
+    Type: String
+
+  BuildSpecFilename:
+    Type: String
+    Default: "targets/common/buildspec.yaml"
+
+  TestBuildSpecFilename:
+    Type: String
+    Default: "targets/common/buildspec_test.yaml"
+
+  BaseImageURI:
+    Type: String
+
+  CodeBuildImage:
+    Type: String
+    Default: "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+
+  RunTests:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  TestReportDirectory:
+    Type: String
+    Default: "reports"
+
+  TestReportFilename:
+    Type: String
+    Default: "pytest_reports.xml"
+
+####################################################################################
+Conditions:
+  ShouldRunTests: !Equals [!Ref RunTests, "true"]
+
+####################################################################################
+Resources:
+  ArtifactStore:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-artifact-store"
+      Tags:
+        - Key: "S3-BucketName"
+          Value: !Sub "${AWS::StackName}-ArtifactStore"
+
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${AWS::StackName}-ecr-repository"
+
+  CfnRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-CfnRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "cloudformation.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: ecr-logs-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - "ecr:GetAuthorizationToken"
+                - "ecr:BatchCheckLayerAvailability"
+                - "ecr:GetDownloadUrlForLayer"
+                - "ecr:BatchGetImage"
+                - "logs:CreateLogStream"
+                - "logs:PutLogEvents"
+              Resource: "*"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AdministratorAccess"
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-CodeBuildRole"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowAssumeRole
+            Effect: Allow
+            Principal:
+              Service: "codebuild.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: '*'
+        - PolicyName: !Sub "${ProjectName}-bucket-access"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - "s3:ListBucket"
+                - "s3:GetObject"
+                - "s3:PutObject"
+              Resource:
+                - "arn:aws:s3:::api-score-cicd-artifact-store"
+                - "arn:aws:s3:::api-score-cicd-artifact-store/*"
+        - PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: CodeBuild
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "codecommit:GitPull"
+                  - "s3:GetObject"
+                  - "s3:GetObjectVersion"
+                  - "s3:PutObject"
+                  - "ecr:GetRepositoryPolicy"
+                  - "ecr:DescribeImageScanFindings"
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:CompleteLayerUpload"
+                  - "ecr:GetAuthorizationToken"
+                  - "ecr:GetDownloadUrlForLayer"
+                  - "ecr:BatchGetImage"
+                  - "ecr:InitiateLayerUpload"
+                  - "ecr:PutImage"
+                  - "ecr:UploadLayerPart"
+                  - "ecr:ListTagsForResource"
+                  - "ecr:DescribeRepositories"
+                  - "ecr:DescribeImages"
+                  - "s3:GetBucketAcl"
+                  - "s3:GetBucketLocation"
+                  - "cloudformation:*"
+                  - "iam:PassRole"
+                  - "ec2:Describe*"
+                  - "codebuild:CreateReportGroup"
+                  - "codebuild:CreateReport"
+                  - "codebuild:UpdateReport"
+                  - "codebuild:BatchPutTestCases"
+                  - "codebuild:BatchPutCodeCoverages"
+                Resource: "*"
+          PolicyName: BuildPolicy
+
+  CodePipelineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-CodePipelineRole"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "codepipeline.amazonaws.com"
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CodePipeline
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'codecommit:CancelUploadArchive'
+                  - 'codecommit:GetBranch'
+                  - 'codecommit:GetCommit'
+                  - 'codecommit:GetUploadArchiveStatus'
+                  - 'codecommit:UploadArchive'
+                  - 'codebuild:BatchGetBuilds'
+                  - 'codebuild:StartBuild'
+                  - 'cloudwatch:*'
+                  - 'cloudformation:*'
+                  - "s3:*"
+                  - "iam:PassRole"
+                Resource: '*'
+
+  CodeBuildLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/codepipeline/${ProjectName}"
+      RetentionInDays: 30
+
+  CodeBuildReportGroup:
+    Type: AWS::CodeBuild::ReportGroup
+    Condition: ShouldRunTests
+    Properties:
+      DeleteReports: true
+      ExportConfig:
+        ExportConfigType: NO_EXPORT
+      Name: !Sub "${CodeTestProject}-ReportGroup"
+      Type: TEST
+
+  CodeTestProject:
+    Type: AWS::CodeBuild::Project
+    Condition: ShouldRunTests
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Cache:
+        Type: S3
+        Location: !Sub "${ArtifactStore}/codebuild-cache"
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: !Ref CodeBuildImage
+        EnvironmentVariables:
+          - Name: TEST_REPORT_DIRECTORY
+            Type: PLAINTEXT
+            Value: !Ref TestReportDirectory
+          - Name: TEST_REPORT_FILENAME
+            Type: PLAINTEXT
+            Value: !Ref TestReportFilename
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: true
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Ref CodeBuildLogGroup
+          Status: ENABLED
+        S3Logs:
+          Status: DISABLED
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Ref TestBuildSpecFilename
+      Visibility: PRIVATE
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${AWS::StackName}-CodeBuildProject"
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Ref BuildSpecFilename
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: !Ref CodeBuildImage
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: CFN_ROLE
+            Type: PLAINTEXT
+            Value: !GetAtt CfnRole.Arn
+          - Name: PROJECT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectName
+          - Name: AWS_DEFAULT_REGION
+            Type: PLAINTEXT
+            Value: !Sub "${AWS::Region}"
+          - Name: AWS_ACCOUNT_ID
+            Type: PLAINTEXT
+            Value: !Sub "${AWS::AccountId}"
+          - Name: ECR_REPOSITORY_NAME
+            Type: PLAINTEXT
+            Value: !Ref EcrRepository
+          - Name: BASE_IMAGE_URI
+            Type: PLAINTEXT
+            Value: !Ref BaseImageURI
+          - Name: DEPLOYMENT_CFN_FILENAME
+            Type: PLAINTEXT
+            Value: !Sub "${DeploymentCfnFilename}"
+          - Name: DOCKER_FILENAME
+            Type: PLAINTEXT
+            Value: !Sub "${DockerFilename}"
+      Cache:
+        Type: S3
+        Location: !Sub "${ArtifactStore}/codebuild-cache"
+
+  CodeCommitRepository:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Sub "${AWS::StackName}-CodeCommitRepository"
+
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${AWS::StackName}-CodePipeline"
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      PipelineType: V2
+      ArtifactStore:
+        Location: !Ref ArtifactStore
+        Type: S3
+      Stages: !If
+        - ShouldRunTests
+        - - Name: Clone
+            Actions:
+              - Name: Clone
+                OutputArtifacts:
+                  - Name: CloneOutput
+                ActionTypeId:
+                  Category: Source
+                  Owner: AWS
+                  Provider: CodeCommit
+                  Version: "1"
+                Configuration:
+                  BranchName: main
+                  RepositoryName: !GetAtt CodeCommitRepository.Name
+                  PollForSourceChanges: false
+                RunOrder: 1
+          - Name: Test
+            Actions:
+              - ActionTypeId:
+                  Category: Test
+                  Owner: AWS
+                  Provider: CodeBuild
+                  Version: 1
+                Configuration:
+                  ProjectName: !Ref CodeTestProject
+                InputArtifacts:
+                  - Name: CloneOutput
+                Name: Test
+                OutputArtifacts:
+                  - Name: TestOutput
+                Region: !Ref AWS::Region
+                RunOrder: 1
+          - Name: Build
+            Actions:
+              - Name: Build
+                InputArtifacts:
+                  - Name: CloneOutput
+                OutputArtifacts:
+                  - Name: BuildOutput
+                ActionTypeId:
+                  Category: Build
+                  Owner: AWS
+                  Version: "1"
+                  Provider: CodeBuild
+                Configuration:
+                  ProjectName: !Ref CodeBuildProject
+                RunOrder: 1
+          - Name: Deploy
+            Actions:
+              - Name: Deploy
+                InputArtifacts:
+                  - Name: BuildOutput
+                OutputArtifacts:
+                  - Name: DeployOutput
+                ActionTypeId:
+                  Category: Deploy
+                  Owner: AWS
+                  Version: "1"
+                  Provider: CloudFormation
+                Configuration:
+                  ActionMode: CREATE_UPDATE
+                  RoleArn: !GetAtt CfnRole.Arn
+                  Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
+                  StackName: !Ref ProjectName
+                  TemplatePath: !Sub "BuildOutput::${DeploymentCfnFilename}"
+                  ParameterOverrides: !Sub |
+                    {
+                      "ImageName" : { "Fn::GetParam" : ["BuildOutput", "deployment-parameters.json", "ImageName"]},
+                      "ProjectName" : "${ProjectName}"
+                    }
+        - - Name: Clone
+            Actions:
+              - Name: Clone
+                OutputArtifacts:
+                  - Name: CloneOutput
+                ActionTypeId:
+                  Category: Source
+                  Owner: AWS
+                  Provider: CodeCommit
+                  Version: "1"
+                Configuration:
+                  BranchName: main
+                  RepositoryName: !GetAtt CodeCommitRepository.Name
+                  PollForSourceChanges: false
+                RunOrder: 1
+          - Name: Build
+            Actions:
+              - Name: Build
+                InputArtifacts:
+                  - Name: CloneOutput
+                OutputArtifacts:
+                  - Name: BuildOutput
+                ActionTypeId:
+                  Category: Build
+                  Owner: AWS
+                  Version: "1"
+                  Provider: CodeBuild
+                Configuration:
+                  ProjectName: !Ref CodeBuildProject
+                RunOrder: 1
+          - Name: Deploy
+            Actions:
+              - Name: Deploy
+                InputArtifacts:
+                  - Name: BuildOutput
+                OutputArtifacts:
+                  - Name: DeployOutput
+                ActionTypeId:
+                  Category: Deploy
+                  Owner: AWS
+                  Version: "1"
+                  Provider: CloudFormation
+                Configuration:
+                  ActionMode: CREATE_UPDATE
+                  RoleArn: !GetAtt CfnRole.Arn
+                  Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
+                  StackName: !Ref ProjectName
+                  TemplatePath: !Sub "BuildOutput::${DeploymentCfnFilename}"
+                  ParameterOverrides: !Sub |
+                    {
+                      "ImageName" : { "Fn::GetParam" : ["BuildOutput", "deployment-parameters.json", "ImageName"]},
+                      "ProjectName" : "${ProjectName}"
+                    }
+
+  EventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: eb-pipeline-execution
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: codepipeline:StartPipelineExecution
+                Resource: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${CodePipeline}"
+
+  EventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.codecommit
+        detail-type:
+          - 'CodeCommit Repository State Change'
+        resources:
+          - !Sub "arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${CodeCommitRepository.Name}"
+        detail:
+          event:
+            - referenceCreated
+            - referenceUpdated
+          referenceType:
+            - branch
+          referenceName:
+            - main
+      Targets:
+        - Arn: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${CodePipeline}"
+          RoleArn: !GetAtt EventRole.Arn
+          Id: !Sub "${AWS::StackName}-CodePipeline"
+
+####################################################################################
+Outputs:
+  CodeCommitRepositoryUrl:
+    Value: !GetAtt CodeCommitRepository.CloneUrlSsh
+    Export:
+      Name: !Sub "${AWS::StackName}-CodeCommitRepositoryUrl"
+  CodeCommitRepositoryName:
+    Value: !GetAtt CodeCommitRepository.Name
+    Export:
+      Name: !Sub "${AWS::StackName}-CodeCommitRepositoryName"
+  ArtifactStoreName:
+    Value: !Sub "${AWS::StackName}-artifact-store"
+    Export:
+      Name: !Sub "${AWS::StackName}-ArtifactStoreName"
+  EcrRepositoryName:
+    Value: !Sub "${AWS::StackName}-ecr-repository"
+    Export:
+      Name: !Sub "${AWS::StackName}-EcrRepositoryName"

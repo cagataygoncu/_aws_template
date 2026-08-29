@@ -1,0 +1,80 @@
+name: AWS-SERVICE-TEMPLATE Integration
+
+on:
+  push:
+    branches: [ "main", "dev"]
+    paths:
+      - "requirements.txt"
+      - "config/**"
+      - "src/**"
+      - ".github/**"
+      - "data/**"
+      - targets/**
+      - tests/**
+  pull_request:
+    branches: [ "main", "dev" ]
+    paths:
+      - "requirements.txt"
+      - "config/**"
+      - "src/**"
+      - ".github/**"
+      - "data/**"
+      - targets/**
+      - tests/**
+
+env:
+  AWS_REGION : "ap-southeast-2" #Change to reflect your Region
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+jobs:
+
+  IntegrationTest:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Git clone the repository
+        uses: actions/checkout@v3
+      - name: Set up Python 3.9.17
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.9.17"
+      - uses: actions/cache@v2
+        with:
+          path: ${{ env.pythonLocation }}
+          key: ${{ env.pythonLocation }}-${{ hashFiles('requirements.txt') }}
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        continue-on-error: true
+      - name: Lint Python with Flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      - name: Run Pytest
+        run: |
+          pytest ./tests/unit -v -s
+      - name: Build Docker Image
+        run: docker build -t docker_container -f targets/task/Dockerfile .
+      - name: Run Docker Container
+        run: |
+          docker run --rm -p 5040:5040 \
+                    --entrypoint uvicorn \
+                    --name docker_container -d --env AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} --env AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} --env AWS_DEFAULT_REGION=ap-southeast-2  docker_container:latest src.main_task:app --host 0.0.0.0 --port 5040
+      - name: Sleep to allow for setup
+        run: sleep 3
+      - name: Run Python Script to Validate Responses
+        run: |
+          docker logs docker_container
+          python -m tests.integration.task_integration_validation
+
+
+
+
+
+

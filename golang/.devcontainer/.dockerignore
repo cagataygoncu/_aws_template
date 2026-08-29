@@ -1,0 +1,15 @@
+# copy this file to build context directory
+
+# Ignore everything
+*
+.*
+
+# Allow files and directories
+!.devcontainer
+!/src
+!/lib
+!/targets
+!/data
+!requirements.txt
+!go.mod
+!go.sum

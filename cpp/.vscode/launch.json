@@ -1,0 +1,27 @@
+{
+    // Build first: cmake -S . -B build && cmake --build build
+    // The target name comes from add_executable() in CMakeLists.txt.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run cpp_sample",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/cpp_sample",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [{ "name": "MODE", "value": "local" }],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Server: server.mjs",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/server.mjs",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": { "PORT": "{{CONTAINER_PORT}}", "NODE_ENV": "development" }
+        },
+        {
+            "name": "Next dev server",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "dev"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        }
+    ]
+}

@@ -1,0 +1,7 @@
+{
+    "go.useLanguageServer": true,
+    // "go.languageServerFlags": [],
+    "go.lintTool": "golint",
+    "go.lintOnSave": "file",
+    "go.lintFlags": [],
+}

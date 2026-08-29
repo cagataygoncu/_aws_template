@@ -1,0 +1,101 @@
+version: 0.2
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+
+env:
+  variables:
+    DOCKER_BUILDKIT: 1
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - echo "Retrieving SSH key from Secrets Manager"
+      - >
+        SSH_KEY=$(aws secretsmanager get-secret-value
+        --secret-id arn:aws:secretsmanager:ap-southeast-2:095841671171:secret:gig_service_template_github
+        --query SecretString
+        --output text)
+      - mkdir -p ~/.ssh
+      - echo "$SSH_KEY" > ~/.ssh/id_rsa
+      - chmod 600 ~/.ssh/id_rsa
+      - eval "$(ssh-agent -s)"
+      - ssh-add ~/.ssh/id_rsa
+      - ssh-add -L
+      - ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+  pre_build:
+    commands: |
+      echo Logging in to Amazon ECR...
+
+      aws ecr get-login-password --region $AWS_DEFAULT_REGION | \
+      docker login \
+      --username AWS \
+      --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+
+      ECR_REPOSITORY_LATEST_TAG=\
+      $(aws ecr describe-images \
+      --repository-name $ECR_REPOSITORY_NAME \
+      --query 'sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]' | jq . --raw-output)
+      echo "ECR_REPOSITORY_LATEST_TAG = ${ECR_REPOSITORY_LATEST_TAG}"
+
+      if [ -n "$ECR_REPOSITORY_LATEST_TAG" ] && [ "$ECR_REPOSITORY_LATEST_TAG" != "null" ]; then
+        echo "Found existing base image with tag: $ECR_REPOSITORY_LATEST_TAG"
+        docker pull $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$ECR_REPOSITORY_LATEST_TAG || true
+      else
+        echo "No existing base images found in repository. Starting fresh build."
+        ECR_REPOSITORY_LATEST_TAG="0"
+      fi
+
+      touch deployment-parameters.json
+  build:
+    commands: |
+      echo Building the Docker image...
+
+      IMAGE_TAG=\
+      $(echo ${ECR_REPOSITORY_LATEST_TAG} | \
+      awk -F. -v OFS=. '{$NF += 1 ; print}')
+
+      IMAGE_NAME=$ECR_REPOSITORY_NAME:$IMAGE_TAG
+      echo "IMAGE_NAME = ${IMAGE_NAME}"
+
+      export GITHUB_TOKEN=''
+      DOCKER_BUILDKIT=1
+
+      # Create and use buildx builder with docker-container driver
+      docker buildx create --name mybuilder --driver docker-container --use --bootstrap || docker buildx use mybuilder
+
+      echo "Building with BASE_IMAGE_URI = ${BASE_IMAGE_URI}"
+      docker buildx build \
+      --progress=plain \
+      --build-arg ENV=prod \
+      --build-arg DEBUG=false \
+      --build-arg GITHUB_TOKEN=$GITHUB_TOKEN \
+      --build-arg BASE_IMAGE_URI=$BASE_IMAGE_URI \
+      --ssh default=$HOME/.ssh/id_rsa \
+      --cache-from type=registry,ref=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$ECR_REPOSITORY_LATEST_TAG \
+      --cache-from type=registry,ref=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:buildcache \
+      --cache-to type=inline \
+      --cache-to type=registry,ref=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:buildcache,mode=max \
+      --load \
+      -t $IMAGE_NAME \
+      . \
+      --file $DOCKER_FILENAME
+
+      docker tag $IMAGE_NAME $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_NAME
+
+      cat << EOF > deployment-parameters.json
+      {
+        "ImageName": "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_NAME"
+      }
+      EOF
+  post_build:
+    commands: |
+      echo Pushing the Docker image...
+      docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_NAME
+artifacts:
+  files:
+    - $DEPLOYMENT_CFN_FILENAME
+    - deployment-parameters.json

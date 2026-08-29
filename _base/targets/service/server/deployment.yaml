@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: aws-template-server
+
+Parameters:
+    ImageName:
+        Type: String
+        Default: ''
+
+    ProjectName:
+        Type: String
+        Default: 'aws-template-server'
+
+    ServiceName:
+        Type: String
+        Default: 'server'
+
+    S3BucketList:
+        Type: String
+        Default: "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,\
+            arn:aws:s3:::gig-config,arn:aws:s3:::gig-config/*,\
+            arn:aws:s3:::*-laver-cup-*,arn:aws:s3:::*-laver-cup-*/*,\
+            arn:aws:s3:::*-aus-summer-*,arn:aws:s3:::*-aus-summer-*/*"
+
+    ContainerPort:
+        Type: Number
+        Default: {{CONTAINER_PORT}}
+
+    TaskDefinitionCpu:
+        Type: Number
+        Default: 1024
+
+    TaskDefinitionMemory:
+        Type: Number
+        Default: 4096
+
+    # The stacks whose exports this service imports - by default both are the
+    # base stack (gig-cfn-templates projects/aolabs/aolabs-base.yaml), which
+    # exports its VPC, subnets and cluster under its ProjectName. Split them
+    # if the cluster ever lives somewhere other than the VPC's own stack.
+    NetworkStackName:
+        Type: String
+        Default: 'aolabs'
+
+    ClusterStackName:
+        Type: String
+        Default: 'aolabs'
+
+    HostedZoneId:
+        Type: AWS::Route53::HostedZone::Id
+        Default: 'Z0455879C45UXUVKIMBH' # tennisaction.com.au
+
+    DomainName:
+        Type: String
+        Default: 'server.tennisaction.com.au'
+
+    # Container config in S3. One file per project by convention:
+    #   s3://<ConfigBucket>/<ProjectName>/<ConfigFileName>
+    # The repo's own container_config.env is the file to upload there.
+    # ProjectName is passed in by the pipeline, so the path follows the project
+    # automatically. Set ContainerEnvironmentFileArn to a full ARN to point
+    # somewhere else (a shared file, another bucket). Whatever bucket it names
+    # must also be readable through S3BucketList above.
+    ConfigBucket:
+        Type: String
+        Default: 'gig-config'
+    ConfigFileName:
+        Type: String
+        Default: 'container_config.env'
+    ContainerEnvironmentFileArn:
+        Type: String
+        Default: ''
+
+    # gig-cfn-templates release that every nested stack below is pulled from.
+    # Bump this one value to move the whole target to a new template version.
+    TemplateVersion:
+        Type: String
+        Default: "v1.10.2"
+
+Conditions:
+    HasEnvironmentFileArn: !Not [!Equals [!Ref ContainerEnvironmentFileArn, '']]
+
+Resources:
+    Certificate:
+        Type: AWS::CertificateManager::Certificate
+        Properties:
+            DomainName: !Ref DomainName
+            ValidationMethod: DNS
+            SubjectAlternativeNames:
+                - !Sub '*.${DomainName}'
+            DomainValidationOptions:
+                - DomainName: !Ref DomainName
+                  HostedZoneId: !Ref HostedZoneId
+
+    LoadBalancerStack:
+        Type: AWS::CloudFormation::Stack
+        Properties:
+            TemplateURL: !Sub 'https://gig-cfn-templates.s3.ap-southeast-2.amazonaws.com/${TemplateVersion}/templates/compute/alb-020-010.yaml'
+            Tags:
+                - Key: Name
+                  Value: !Sub '${ProjectName}-LB'
+            Parameters:
+                VpcId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-VpcId'
+                PublicSubnetOneId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-PublicSubnetOneId'
+                PublicSubnetTwoId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-PublicSubnetTwoId'
+                SSLCertificateArn: !Ref Certificate
+                ContainerPort: !Ref ContainerPort
+
+    DNSRecord:
+        Type: AWS::Route53::RecordSet
+        Properties:
+            HostedZoneId: !Ref HostedZoneId
+            Name: !Ref DomainName
+            Type: A
+            AliasTarget:
+                DNSName: !GetAtt LoadBalancerStack.Outputs.LoadbalancerDnsName
+                HostedZoneId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerCanonicalHostedZoneID
+
+    TaskRole:
+        Type: AWS::IAM::Role
+        Properties:
+            RoleName: !Sub '${AWS::StackName}-TaskRole'
+            AssumeRolePolicyDocument:
+                Statement:
+                    - Effect: Allow
+                      Principal:
+                          Service: ecs-tasks.amazonaws.com
+                      Action: 'sts:AssumeRole'
+            Policies:
+                - PolicyName: bucket-access
+                  PolicyDocument:
+                      Version: '2012-10-17'
+                      Statement:
+                          - Effect: Allow
+                            Action:
+                                - s3:ListBucket
+                                - s3:*Object
+                            Resource: !Split [',', !Ref S3BucketList]
+                - PolicyName: secretmanager-access
+                  PolicyDocument:
+                      Version: '2012-10-17'
+                      Statement:
+                          - Effect: Allow
+                            Action:
+                                - secretsmanager:GetSecretValue
+                            Resource:
+                                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*'
+
+    ServiceStack:
+        Type: AWS::CloudFormation::Stack
+        Properties:
+            TemplateURL: !Sub 'https://gig-cfn-templates.s3.ap-southeast-2.amazonaws.com/${TemplateVersion}/templates/compute/ecs-srv-alb-0020.yaml'
+            Tags:
+                - Key: Name
+                  Value: !Sub '${ProjectName}-Service'
+            Parameters:
+                VpcId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-VpcId'
+                SubnetOneId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-PublicSubnetOneId'
+                SubnetTwoId: !ImportValue
+                    Fn::Sub: '${NetworkStackName}-PublicSubnetTwoId'
+                ClusterId: !ImportValue
+                    Fn::Sub: '${ClusterStackName}-ClusterId'
+                ImageName: !Ref ImageName
+                TaskRoleArn: !Ref TaskRole
+                ServiceName: !Ref ServiceName
+                ContainerPort: !Ref ContainerPort
+                # How the container is started. bootstrap.sh fills these in
+                # from the language layer, matching that language's Dockerfile
+                # (where its source lands, and what runs it). The cmd
+                # brings its own quoting, and a !Sub when it references a
+                # parameter such as ${ContainerPort}.
+                ContainerWorkingDirectory: '{{CONTAINER_WORKDIR}}'
+                ContainerEntryPoint: '{{CONTAINER_ENTRYPOINT_SERVER}}'
+                ContainerCmd: {{CONTAINER_CMD_SERVER}}
+                ContainerEnvironmentFile: !If
+                    - HasEnvironmentFileArn
+                    - !Ref ContainerEnvironmentFileArn
+                    - !Sub 'arn:aws:s3:::${ConfigBucket}/${ProjectName}/${ConfigFileName}'
+                TaskDefinitionCpu: !Ref TaskDefinitionCpu
+                TaskDefinitionMemory: !Ref TaskDefinitionMemory
+                TargetGroupArn: !GetAtt LoadBalancerStack.Outputs.TargetGroupId
+
+    # No TaskMonitorStack here on purpose: ecs-srv-alb-0020 deploys the task
+    # monitor itself - the custom resource that waits for the service to
+    # converge during the deploy - from its own nested stack. Adding one here
+    # would run a second monitor against the same service.
+    #
+    # Once a release after v1.10.2 is published, pass the version through so
+    # the monitor comes from the same release as everything else:
+    #     TemplateVersion: !Ref TemplateVersion
+    # in the ServiceStack parameters above. The module gained that parameter
+    # after v1.10.2, so passing it before then fails the deploy.
+
+Outputs:
+    APIInvokeURL:
+        Value: !Sub ${DomainName}

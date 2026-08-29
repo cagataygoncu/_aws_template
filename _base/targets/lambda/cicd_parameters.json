@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "aws-service-template"
+  },
+  {
+    "ParameterKey": "DeploymentCfnFilename",
+    "ParameterValue": "targets/lambda/deployment.yaml"
+  },
+  {
+    "ParameterKey": "DockerFilename",
+    "ParameterValue": "targets/lambda/Dockerfile"
+  },
+  {
+    "ParameterKey": "RunTests",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "BaseImageURI",
+    "ParameterValue": "{{BASE_IMAGE_LAMBDA}}"
+  },
+  {
+    "ParameterKey": "CodeBuildImage",
+    "ParameterValue": "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+  }
+]

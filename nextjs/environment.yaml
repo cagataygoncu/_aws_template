@@ -1,0 +1,7 @@
+name: {{PROJECT_NAME}}
+channels:
+    - conda-forge
+    - nodefaults
+dependencies:
+    # Matches the node base image in targets/service/Dockerfile. npm ships with it.
+    - nodejs={{LANGUAGE_VERSION}}

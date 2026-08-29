@@ -1,0 +1,14 @@
+{
+    "GET": {
+        "protected-get": {
+            "parameters": "?query_param1=integration_test"
+        }
+    },
+    "POST": {
+        "protected-post": {
+            "data_1": "string",
+            "data_2": "string"
+            
+        }
+    }
+}

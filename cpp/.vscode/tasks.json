@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: configure",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["..", "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_FLAGS=-g3 -O0"],
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: build",
+            "type": "shell",
+            "command": "make",
+            "args": ["VERBOSE=1"],
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "dependsOn": "CMake: configure"
+        },
+        {
+            "label": "Clean Build Directory",
+            "type": "shell",
+            "command": "rm -rf ${workspaceFolder}/build/*",
+            "problemMatcher": [],
+            "group": "build"
+        }
+    ]
+}

@@ -1,0 +1,23 @@
+{
+    // app: :example in mix.exs - rename these tasks with it.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run the application",
+            "type": "mix_task",
+            "request": "launch",
+            "task": "run",
+            "taskArgs": ["--no-halt"],
+            "projectDir": "${workspaceFolder}",
+            "env": { "MODE": "local" }
+        },
+        {
+            "name": "Unit tests",
+            "type": "mix_task",
+            "request": "launch",
+            "task": "test",
+            "projectDir": "${workspaceFolder}",
+            "env": { "MIX_ENV": "test" }
+        }
+    ]
+}

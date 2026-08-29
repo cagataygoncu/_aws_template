@@ -1,0 +1,230 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: aws-service-template
+
+Parameters:
+    ImageName:
+        Type: String
+        Default: ''
+    ProjectName:
+        Type: String
+        Default: 'aws-service-template'
+    S3BucketList:
+        Type: String
+        Default: "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,\
+            arn:aws:s3:::gig-config,arn:aws:s3:::gig-config/*,\
+            arn:aws:s3:::*-laver-cup-*,arn:aws:s3:::*-laver-cup-*/*,\
+            arn:aws:s3:::*-aus-summer-*,arn:aws:s3:::*-aus-summer-*/*"
+    ApiId:
+        Type: String
+        Default: ''
+    ApiRootResourceId:
+        Type: String
+        Default: ''
+    ApiInvokeDomainUrl:
+        Type: String
+        Default: ''
+    LambdaFunctionName:
+        Type: String
+        Default: 'aws-service-lambda'
+    ApplicationLogLevel:
+        Type: String
+        Default: "DEBUG"
+    SystemLogLevel:
+        Type: String
+        Default: "INFO"
+    # VPC attachment. The private subnets and the cache client security group
+    # are exported by the same base stack (gig-cfn-templates
+    # projects/aolabs/aolabs-base.yaml), so they are always in the same VPC -
+    # a security group from one VPC with subnets from another fails the deploy.
+    # The exports are named after that stack's ProjectName, not its stack name.
+    NetworkStackName:
+        Type: String
+        Default: 'aolabs'
+    # Empty means: derive from NetworkStackName. Set either to pin explicit
+    # ids instead - keep them a matched pair if you do.
+    SubnetIds:
+        Type: CommaDelimitedList
+        Default: ''
+    SecurityGroupIds:
+        Type: CommaDelimitedList
+        Default: ''
+    EnvironmentVariables:
+      Type: String
+      Default: >-
+          {
+            "DATABASE_URL": "postgres://",
+            "KMS_KEY_ID": "key-123",
+            "USER_POOL_ID": "pool-456",
+            "REDIS_SECRET_NAME": "2026-aus-summer-config-redis"
+          }
+
+    # gig-cfn-templates release that every nested stack below is pulled from.
+    # Bump this one value to move the whole target to a new template version.
+    TemplateVersion:
+        Type: String
+        Default: "v1.10.2"
+
+Conditions:
+    IntegrateLambdaToApi: !Not [!Equals [!Ref ApiId, '']]
+    HasSubnetIds: !Not [!Equals [!Join ['', !Ref SubnetIds], '']]
+    HasSecurityGroupIds: !Not [!Equals [!Join ['', !Ref SecurityGroupIds], '']]
+
+Resources:
+  LambdaIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: '/'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: dynamodb-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "dynamodb:*"
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeTable
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*"
+        - PolicyName: ecr-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - "ecr:GetAuthorizationToken"
+                - "ecr:BatchCheckLayerAvailability"
+                - "ecr:GetDownloadUrlForLayer"
+                - "ecr:BatchGetImage"
+                - "ecr:SetRepositoryPolicy"
+                - "ecr:GetRepositoryPolicy"
+              Resource: "*"
+        - PolicyName: vpc-access
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'ec2:DescribeNetworkInterfaces'
+                - 'ec2:CreateNetworkInterface'
+                - 'ec2:DeleteNetworkInterface'
+                - 'ec2:AssignPrivateIpAddresses'
+                - 'ec2:UnassignPrivateIpAddresses'
+              Resource:
+                - '*'
+        - PolicyName: log-access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectName}-${LambdaFunctionName}:*"
+        - PolicyName: bucket-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - s3:*
+              Resource: !Split [",", !Ref S3BucketList]
+        - PolicyName: cognito-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:*
+              Resource: !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
+        - PolicyName: kms-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - kms:*
+              Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
+        - PolicyName: secretmanager-access
+          PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                  - Effect: Allow
+                    Action:
+                        - secretsmanager:GetSecretValue
+                    Resource:
+                        - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*'
+
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://gig-cfn-templates.s3.ap-southeast-2.amazonaws.com/${TemplateVersion}/templates/compute/lambda-0010.yaml'
+      Parameters:
+        ProjectName: !Sub "${ProjectName}"
+        LambdaIamRoleArn: !GetAtt LambdaIamRole.Arn
+        LambdaFunctionName: !Ref LambdaFunctionName
+        S3BucketList: !Ref S3BucketList
+        ImageName: !Ref ImageName
+        # /lambda-entrypoint.sh and /var/task are the same in every AWS Lambda
+        # base image - python, nodejs and provided alike - so only the handler
+        # is per language. bootstrap.sh fills it in.
+        ContainerEntryPoint: "/lambda-entrypoint.sh"
+        ContainerCmd: "{{CONTAINER_CMD_LAMBDA}}"
+        ContainerWorkingDirectory: "/var/task"
+        MemorySize: 4096
+        ApplicationLogLevel: !Ref ApplicationLogLevel
+        SystemLogLevel: !Ref SystemLogLevel
+        SubnetIds: !If
+          - HasSubnetIds
+          - !Join [',', !Ref SubnetIds]
+          - !Join
+            - ','
+            - - !ImportValue
+                  Fn::Sub: '${NetworkStackName}-PrivateSubnetOneId'
+              - !ImportValue
+                  Fn::Sub: '${NetworkStackName}-PrivateSubnetTwoId'
+        SecurityGroupIds: !If
+          - HasSecurityGroupIds
+          - !Join [',', !Ref SecurityGroupIds]
+          - !ImportValue
+              Fn::Sub: '${NetworkStackName}-CacheClientSecurityGroupId'
+        EnvironmentVariables: !Ref EnvironmentVariables
+
+  LambdaIntegrationStack:
+      Condition: IntegrateLambdaToApi
+      Type: AWS::CloudFormation::Stack
+      Properties:
+          TemplateURL: !Sub 'https://gig-cfn-templates.s3.ap-southeast-2.amazonaws.com/${TemplateVersion}/templates/compute/lambda-integration.yaml'
+          Parameters:
+              ProjectName: !Sub '${ProjectName}'
+              LambdaFunctionName: !GetAtt LambdaStack.Outputs.LambdaFunctionName
+              LambdaFunctionArn: !GetAtt LambdaStack.Outputs.LambdaFunctionArn
+              ApiId: !Ref ApiId
+              ApiRootResourceId: !Ref ApiRootResourceId
+
+Outputs:
+    ApiInvokeURL:
+        Value: !Sub ${ApiInvokeDomainUrl}/${LambdaFunctionName}
+    LambdaFunctionUrl:
+        Value: !GetAtt LambdaStack.Outputs.LambdaFunctionUrl
+    LambdaFunctionLogGroupName:
+        Value: !GetAtt LambdaStack.Outputs.LambdaLogGroupName

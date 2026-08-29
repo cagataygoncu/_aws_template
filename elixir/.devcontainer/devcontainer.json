@@ -1,0 +1,53 @@
+{
+    "name": "{{PROJECT_NAME}}",
+    "build": {
+        "dockerfile": "Dockerfile",
+        // "dockerfile": "../targets/lambda/Dockerfile",
+        // "dockerfile": "../targets/service/Dockerfile",
+        "context": "..",
+        "args": {
+            "ENV": "dev",
+            "DEBUG": "true"
+        },
+        "options": ["--ssh=default"]
+    },
+    "forwardPorts": [{{CONTAINER_PORT}}],
+    "shutdownAction": "stopContainer",
+    "runArgs": [
+        "--hostname=${localWorkspaceFolderBasename}",
+        "--add-host=host.docker.internal:host-gateway"
+    ],
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+        "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly,type=bind",
+        "source=${localEnv:HOME}/.aws,target=/root/.aws,readonly,type=bind",
+        "source=${localEnv:HOME}/.ssh/config,target=/root/.ssh/config,readonly,type=bind",
+        "source=${localEnv:HOME}/.ssh/id_rsa,target=/root/.ssh/id_rsa,readonly,type=bind",
+        "source=${localEnv:HOME}/.ssh/id_rsa.pub,target=/root/.ssh/id_rsa.pub,readonly,type=bind",
+        "source=${localEnv:HOME}/data,target=/data,readonly,type=bind"
+    ],
+    "containerEnv": {
+        // `docker run -v` is resolved by the host's daemon - see commands.sh.
+        "AWS_CONFIG_HOST_DIR": "${localEnv:HOME}/.aws"
+    },
+    "initializeCommand": "bash ./.devcontainer/init.sh",
+    "postCreateCommand": "bash ./.devcontainer/post_create.sh",
+    "postStartCommand": "bash ./.devcontainer/post_start.sh",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "JakeBecker.elixir-ls",
+                "saratravi.elixir-formatter",
+                "redhat.vscode-yaml"
+            ],
+            "settings": {
+                "workbench.colorCustomizations": {
+                    "debugConsole.errorForeground": "#383737",
+                    "debugConsole.warningForeground": "#383737",
+                    "debugConsole.infoForeground": "#383737",
+                    "debugConsole.sourceForeground": "#383737"
+                }
+            }
+        }
+    }
+}

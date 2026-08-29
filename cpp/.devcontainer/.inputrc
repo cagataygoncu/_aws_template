@@ -1,0 +1,14 @@
+# Tab complete suggestions
+set show-all-if-ambiguous on
+set completion-ignore-case on
+
+# Search history with arrow keys
+"\e[A":history-search-backward
+"\e[B":history-search-forward
+
+"\t":menu-complete
+"\e[Z":menu-complete-backward
+
+
+# Color files by type
+set colored-stats on

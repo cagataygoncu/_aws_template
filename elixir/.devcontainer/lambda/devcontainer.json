@@ -1,0 +1,65 @@
+{
+    // Opened from the "Reopen in Container" picker, alongside the dev image in
+    // .devcontainer/. This one is the image the pipeline deploys, built from
+    // the same Dockerfile and base image as the target - useful when something
+    // behaves differently in the deployed image than in the dev one.
+    //
+    // The workspace is bind-mounted over the source baked into the image, so
+    // you are editing the repo, not the copy inside the image.
+    //
+    // The lambda base image's entrypoint is the runtime emulator, which would
+    // exit immediately with no handler to serve - runArgs clears it so the
+    // container just stays up.
+    "name": "{{PROJECT_NAME}} (lambda image)",
+    "build": {
+        "dockerfile": "../../targets/lambda/Dockerfile",
+        "context": "../..",
+        "args": {
+            "BASE_IMAGE_URI": "{{BASE_IMAGE_LAMBDA}}",
+            "ENV": "dev",
+            "DEBUG": "true"
+        },
+        "options": ["--ssh=default"]
+    },
+    "forwardPorts": [{{CONTAINER_PORT}}],
+    "shutdownAction": "stopContainer",
+    "runArgs": [
+        "--hostname=${localWorkspaceFolderBasename}",
+        "--add-host=host.docker.internal:host-gateway",
+        "--entrypoint",
+        ""
+    ],
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+        "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly,type=bind",
+        "source=${localEnv:HOME}/.aws,target=/root/.aws,readonly,type=bind",
+        "source=${localEnv:HOME}/.ssh/config,target=/root/.ssh/config,readonly,type=bind",
+        "source=${localEnv:HOME}/.ssh/id_rsa,target=/root/.ssh/id_rsa,readonly,type=bind",
+        "source=${localEnv:HOME}/.ssh/id_rsa.pub,target=/root/.ssh/id_rsa.pub,readonly,type=bind",
+        "source=${localEnv:HOME}/data,target=/data,readonly,type=bind"
+    ],
+    "containerEnv": {
+        "AWS_CONFIG_HOST_DIR": "${localEnv:HOME}/.aws",
+        "MODE": "local"
+    },
+    "initializeCommand": "bash ./.devcontainer/init.sh",
+    "postCreateCommand": "bash ./.devcontainer/post_create.sh",
+    "postStartCommand": "bash ./.devcontainer/post_start.sh",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "JakeBecker.elixir-ls",
+                "saratravi.elixir-formatter",
+                "redhat.vscode-yaml"
+            ],
+            "settings": {
+                "workbench.colorCustomizations": {
+                    "debugConsole.errorForeground": "#383737",
+                    "debugConsole.warningForeground": "#383737",
+                    "debugConsole.infoForeground": "#383737",
+                    "debugConsole.sourceForeground": "#383737"
+                }
+            }
+        }
+    }
+}

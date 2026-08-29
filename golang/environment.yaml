@@ -1,0 +1,10 @@
+name: {{PROJECT_NAME}}
+channels:
+    - conda-forge
+    - nodefaults
+dependencies:
+    # Matches the golang base image in targets/service/Dockerfile.
+    - go={{LANGUAGE_VERSION}}
+    # Language server and debugger the VS Code Go extension drives.
+    - gopls
+    - delve

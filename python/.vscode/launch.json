@@ -1,0 +1,60 @@
+{
+    // Runs inside the devcontainer, against the image's own interpreter.
+    // MODE=local keeps process_request on the in-memory cache, the same thing
+    // the Makefile's RUN_ENV default does for `make run`.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Task: src/main_task.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/main_task.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
+        },
+        {
+            "name": "Server: uvicorn src.main_server:app",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "src.main_server:app",
+                "--host", "0.0.0.0",
+                "--port", "{{CONTAINER_PORT}}",
+                "--reload"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
+        },
+        {
+            "name": "Core: src/main.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/main.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
+        },
+        {
+            "name": "Unit tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["tests/unit", "-v"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
+        }
+    ]
+}
