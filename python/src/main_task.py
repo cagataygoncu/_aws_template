@@ -8,10 +8,10 @@ logger = setup_json_logger("main")
 
 if __name__ == "__main__":
     try:
-        logger.info(f"main_task starting")
+        logger.info("main_task starting")
 
         while True:
-            logger.info(f"processing")
+            logger.info("processing")
             process_request("test")
             time.sleep(3)
     except Exception as ex:

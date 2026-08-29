@@ -8,8 +8,8 @@ try:
     logging.getLogger("botocore.credentials").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-    from gig_utils_core.logger_config import set_context, get_logger
     from gig_utils_aws.lambda_ import generate_lambda_response, get_event_data
+    from gig_utils_core.logger_config import get_logger, set_context
 
     from src.main import process_request
 except Exception as ex:

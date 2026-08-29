@@ -1,5 +1,12 @@
 {
     // Runs inside the devcontainer, against the image's own interpreter.
+    //
+    // Program output goes to the TERMINAL panel (console: integratedTerminal),
+    // not the Debug Console - a short-lived configuration like "Core" or the
+    // unit tests can look like "nothing happened" if you are watching the
+    // Debug Console, which only carries the adapter's own messages.
+    // internalConsoleOptions opens it anyway, so a real launch failure is
+    // visible rather than silent.
     // MODE=local keeps process_request on the in-memory cache, the same thing
     // the Makefile's RUN_ENV default does for `make run`.
     "version": "0.2.0",
@@ -10,6 +17,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/main_task.py",
             "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart",
             "cwd": "${workspaceFolder}",
             "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
         },
@@ -25,6 +33,7 @@
                 "--reload"
             ],
             "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart",
             "cwd": "${workspaceFolder}",
             "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
         },
@@ -34,6 +43,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart",
             "cwd": "${workspaceFolder}",
             "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
         },
@@ -44,6 +54,7 @@
             "module": "pytest",
             "args": ["tests/unit", "-v"],
             "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart",
             "cwd": "${workspaceFolder}",
             "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
         },
@@ -53,6 +64,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart",
             "cwd": "${workspaceFolder}",
             "env": { "PYTHONPATH": "${workspaceFolder}", "MODE": "local" }
         }

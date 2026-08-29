@@ -1,5 +1,12 @@
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}/venv/bin/python",
+    // No python.defaultInterpreterPath here on purpose. Workspace settings win
+    // over the devcontainer's, so pinning ./venv would follow you into the
+    // container, where that path does not exist - which is what leaves the
+    // Python extension (and Black) with no interpreter. Instead:
+    //
+    //   on the host       the extension discovers ./venv by itself
+    //   in a container    devcontainer.json sets the image's interpreter
+    //
     "python.autoComplete.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python{{LANGUAGE_VERSION}}/site-packages"],
     "python.analysis.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python{{LANGUAGE_VERSION}}/site-packages"],
     "files.exclude": {

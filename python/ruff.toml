@@ -1,0 +1,18 @@
+# Ruff is the formatter and the linter here, replacing black + pylint. The
+# editor extension and the `ruff` CLI both read this file, so the two cannot
+# disagree about line length or rules.
+
+line-length = 120
+
+[lint]
+# Ruff 0.16's defaults already cover pyflakes, part of pycodestyle, import
+# sorting (I) and tryceratops (TRY) - `ruff check --isolated` shows as much.
+ignore = [
+    # `logger.exception(ex)` is this codebase's idiom for "log it with the
+    # traceback". TRY401 prefers `logger.exception("message")`, since the
+    # exception is logged either way. Remove this to adopt that instead.
+    "TRY401",
+    # The integration helper and main_lambda's import-time fallback log through
+    # the root logger deliberately, before a configured logger exists.
+    "LOG015",
+]

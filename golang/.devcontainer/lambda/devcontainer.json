@@ -30,6 +30,10 @@
         ""
     ],
     "mounts": [
+        // ./venv on the host is a macOS environment; bind-mounted into a Linux
+        // container its interpreter cannot execute, and the Python extension will
+        // happily pick it and fail silently. An empty volume hides it.
+        "source=${localWorkspaceFolderBasename}-venv,target=${containerWorkspaceFolder}/venv,type=volume",
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
         "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly,type=bind",
         "source=${localEnv:HOME}/.aws,target=/root/.aws,readonly,type=bind",

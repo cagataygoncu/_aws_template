@@ -200,7 +200,7 @@ the first `make build` or devcontainer open, not at scaffold time.
 
 | Language | `language_version` | also |
 |----------|--------------------|------|
-| python   | `3.12`             | |
+| python   | `3.12`             | Ruff formats and lints it, per `ruff.toml` |
 | golang   | `1.23`             | |
 | cpp      | `bookworm`         | a distro release, not a toolchain version |
 | nextjs   | `20`               | |
@@ -517,7 +517,20 @@ installed whichever image you open. The Python one includes
 from `ms-python.python` since 2023, and without it F5 does nothing in the
 container. The interpreter path is per image — `/usr/local/bin/python` in the
 dev and service images, `/var/lang/bin/python3` in the Lambda one, which keeps
-its runtime elsewhere.
+its runtime elsewhere — and `ruff.interpreter` names it too.
+
+The devcontainers also mask `./venv` with an empty volume. On a Mac that
+directory holds a macOS interpreter; bind-mounted into a Linux container it is
+visible but unrunnable, and the Python extension will select it and fail to
+start the debug adapter with no message at all. Hiding it removes the trap; a
+`make local-dev-setup` run *inside* a container fills the volume with a Linux
+environment instead.
+
+`.vscode/settings.json` deliberately does **not** pin
+`python.defaultInterpreterPath`: workspace settings override the
+devcontainer's, so a path to the host's `./venv` would follow you into the
+container where it does not exist, leaving the Python extension and Black with
+no interpreter at all. On the host the extension finds `./venv` on its own.
 
 The configurations set `MODE=local`, the same thing the Makefile's `RUN_ENV`
 default does for `make run`, so a debug session uses the in-memory cache rather

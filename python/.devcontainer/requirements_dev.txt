@@ -6,7 +6,7 @@ cfn-lint
 line-profiler
 memory-profiler
 
-pylint
-black
+# ruff replaces black (format) and pylint (lint); config in ruff.toml
+ruff
 
 cfnresponse

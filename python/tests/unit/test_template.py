@@ -1,6 +1,7 @@
 from collections import defaultdict
 
-from hypothesis import example, given, strategies as st
+from hypothesis import example, given
+from hypothesis import strategies as st
 
 from lib.package_a import module_x
 

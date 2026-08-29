@@ -1,6 +1,6 @@
 import hashlib
 
-from gig_utils_storage.cache import set_cache_value, get_cache_value
+from gig_utils_storage.cache import get_cache_value, set_cache_value
 
 
 def f1(cache, input):

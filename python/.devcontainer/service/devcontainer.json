@@ -24,6 +24,10 @@
         "--add-host=host.docker.internal:host-gateway"
     ],
     "mounts": [
+        // ./venv on the host is a macOS environment; bind-mounted into a Linux
+        // container its interpreter cannot execute, and the Python extension will
+        // happily pick it and fail silently. An empty volume hides it.
+        "source=${localWorkspaceFolderBasename}-venv,target=${containerWorkspaceFolder}/venv,type=volume",
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
         "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly,type=bind",
         "source=${localEnv:HOME}/.aws,target=/root/.aws,readonly,type=bind",
@@ -45,7 +49,7 @@
                 "ms-python.python",
                 "ms-python.debugpy",
                 "ms-python.vscode-pylance",
-                "ms-python.black-formatter",
+                "charliermarsh.ruff",
                 "esbenp.prettier-vscode",
                 "redhat.vscode-yaml"
             ],
@@ -59,14 +63,24 @@
                 // The host settings.json points at ./venv, which does not
                 // exist in here; the image's interpreter already has the deps.
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
+                // Ruff follows the selected interpreter; naming it here too
+                // keeps the formatter working before one is picked.
+                "ruff.interpreter": ["/usr/local/bin/python"],
                 "editor.defaultFormatter": "esbenp.prettier-vscode",
+                // VS Code flags "Value is not accepted." here unless Ruff is
+                // also installed on the host: the schema for
+                // editor.defaultFormatter is built from locally installed
+                // extensions, and this one is only installed in the container.
+                // The setting is correct; install it on the host to silence it.
                 "[python]": {
-                    "editor.defaultFormatter": "ms-python.black-formatter",
+                    "editor.defaultFormatter": "charliermarsh.ruff",
+                    "editor.codeActionsOnSave": {
+                        "source.organizeImports.ruff": "explicit"
+                    },
                     "editor.formatOnSave": true,
                     "editor.tabSize": 4,
                     "editor.insertSpaces": true
-                },
-                "black-formatter.args": ["--line-length", "120"]
+                }
             }
         }
     }

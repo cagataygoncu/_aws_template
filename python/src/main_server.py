@@ -1,16 +1,11 @@
-import sys
-import json
-import logging
-from typing import Optional
 import uvicorn
-from fastapi import HTTPException, status, Security, FastAPI, Request, BackgroundTasks
-from fastapi.security import APIKeyHeader, APIKeyQuery
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Security, status
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
+from gig_utils_core.logger_config import setup_json_logger
 
 from src.main import process_request
 from src.pydantic_models.models import RequestItemDetails, ResponseItemDetails
-
-from gig_utils_core.logger_config import setup_json_logger
 
 logger = setup_json_logger("main")
 
@@ -60,19 +55,19 @@ async def root():
 
 
 @app.get("/unprotected-get")
-def unprotected_route_get(query_param1: Optional[str] = None):
+def unprotected_route_get(query_param1: str | None = None):
     response = task_handler(query_param1)
     return response
 
 
 @app.get("/unprotected-get-async")
-async def aio_unprotected_route_get(request: Request, query_param1: Optional[str] = None):
+async def aio_unprotected_route_get(request: Request, query_param1: str | None = None):
     response = await aio_task_handler(query_param1)
     return response
 
 
 @app.get("/protected-get")
-def protected_route_get(request: Request, query_param1: Optional[str] = None, api_key: str = Security(get_api_key)):
+def protected_route_get(request: Request, query_param1: str | None = None, api_key: str = Security(get_api_key)):
     # Process the request for authenticated users
     response = task_handler(query_param1)
     return response
@@ -101,7 +96,7 @@ def protected_route_post(
 
 if __name__ == "__main__":
     try:
-        logger.info(f"main_server starting")
+        logger.info("main_server starting")
         uvicorn.run(app, host="0.0.0.0", port=5040)
     except Exception as ex:
         logger.exception(ex)
