@@ -1,108 +1,104 @@
-#include <chrono>
+// Mirrors the Python and Go stubs: one processRequest() that every target
+// funnels into, so the behaviour is the same however this is deployed.
+
+#include <cctype>
+#include <cstdlib>
 #include <iostream>
-#include <nats/nats.h>
-#include <aws/core/Aws.h>
-#include <aws/s3/S3Client.h>
-#include <aws/dynamodb/DynamoDBClient.h>
+#include <map>
+#include <string>
+#include <algorithm>
 
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-#include <GLFW/glfw3.h>
+namespace {
 
-using namespace Aws;
-using namespace Aws::Auth;
+// Mode decides where the service gets the things it depends on. Deployed code
+// is online; a local run opts out with MODE=local.
+//
+// Online is the default so that nothing has to be set on AWS, and forgetting
+// to set it locally fails loudly on the first AWS call rather than silently
+// running against stub data in production.
+enum class Mode { Online, Local };
 
-// Message handler callback
-void on_message(natsConnection *nc, natsSubscription *sub, natsMsg *msg, void *closure) {
-    const char* data = natsMsg_GetData(msg);
-    std::cout << "Received: " << data << std::endl;
-
-    // // Get AWS client from closure
-    // auto aws = static_cast<Aws::S3::S3Client*>(closure);
-
-    // // Process with AWS if needed
-    // // aws->PutObject(...);
-
-    natsMsg_Destroy(msg);
+std::string env_or(const char* name, const std::string& fallback = "") {
+    const char* value = std::getenv(name);
+    return value ? std::string(value) : fallback;
 }
 
-int main()
-{
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    #ifdef __APPLE__
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    #endif
-    GLFWwindow* window = glfwCreateWindow(800, 600, "ImGui", NULL, NULL);
-    glfwMakeContextCurrent(window);
+Mode get_mode() {
+    std::string mode = env_or("MODE");
+    std::transform(mode.begin(), mode.end(), mode.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    if (mode == "local") {
+        return Mode::Local;
+    }
+    if (!mode.empty() && mode != "online") {
+        std::clog << "main: unknown MODE \"" << mode << "\", falling back to online\n";
+    }
+    return Mode::Online;
+}
 
-    while (!glfwWindowShouldClose(window)) {
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+// Whatever the request handler needs that comes from outside it. Online it
+// comes from the environment the deployment sets - container_config.env for
+// ECS - and this is where a call to Secrets Manager or Parameter Store
+// belongs. Locally it is filled in with values that need no AWS account.
+struct Config {
+    std::string service_name;
+    std::string environment;
+};
 
-        ImGui::ShowDemoWindow();
+Config load_config(Mode mode) {
+    if (mode == Mode::Local) {
+        return Config{"local", "dev"};
+    }
+    // Add the AWS lookups this service needs here. The task role already has
+    // the permissions; nothing needs credentials.
+    return Config{env_or("SERVICE_NAME"), env_or("ENVIRONMENT")};
+}
 
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(window);
-        glfwPollEvents();
+std::string to_string(const std::map<std::string, std::string>& fields) {
+    std::string out = "{";
+    for (auto it = fields.begin(); it != fields.end(); ++it) {
+        if (it != fields.begin()) {
+            out += ", ";
+        }
+        out += it->first + ": " + it->second;
+    }
+    return out + "}";
+}
+
+}  // namespace
+
+std::map<std::string, std::string> process_request(const std::string& event_data, Mode mode) {
+    const Config config = load_config(mode);
+
+    const std::map<std::string, std::string> input{
+        {"event_data", event_data},
+        {"mode", mode == Mode::Local ? "local" : "online"},
+    };
+    std::clog << "main: input: " << to_string(input) << "\n";
+
+    const std::map<std::string, std::string> output{
+        {"service", config.service_name},
+        {"env", config.environment},
+        {"echo", event_data},
+        {"length", std::to_string(event_data.size())},
+    };
+    std::clog << "main: output: " << to_string(output)
+              << " for input: " << to_string(input) << "\n";
+
+    return output;
+}
+
+int main(int argc, char** argv) {
+    std::string event_data = "test";
+    if (argc > 1) {
+        event_data = argv[1];
+        for (int i = 2; i < argc; ++i) {
+            event_data += " ";
+            event_data += argv[i];
+        }
     }
 
-    glfwTerminate();
-
-    natsConnection *nc = nullptr;
-    natsSubscription *sub = nullptr;
-    natsStatus status;
-
-    // Initialize AWS
-    Aws::SDKOptions options;
-    Aws::InitAPI(options);
-
-    Aws::Client::ClientConfiguration config;
-    config.region = "ap-southeast-2";
-    auto s3_client = std::make_shared<Aws::S3::S3Client>(config);
-
-    // Connect to NATS
-    auto server_url = "nats://k8s-default-external-0b802e4465-7b7828d8e5f3b016.elb.ap-southeast-2.amazonaws.com:4224";
-    natsOptions *opts = NULL;
-    natsOptions_Create(&opts);
-    natsOptions_SetURL(opts, server_url);
-    natsOptions_SetUserInfo(opts, "tennis-australia", "AlTZALkwIndisHfUrUERbY");
-    status = natsConnection_Connect(&nc, opts);
-    if (status != NATS_OK) {
-        std::cerr << "Error connecting to NATS: " << status << std::endl;
-        return 1;
-    }
-    natsOptions_Destroy(opts);
-
-    // Subscribe
-    auto subject = "external.datafeed.realtime.rla";
-    status = natsConnection_Subscribe(&sub, nc, subject, on_message, s3_client.get());
-    if (status != NATS_OK) {
-        std::cerr << "Error subscribing: " << status << std::endl;
-        natsConnection_Destroy(nc);
-        return 1;
-    }
-
-    // Keep running until interrupted
-    while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    }
-
-    // Cleanup
-    natsSubscription_Destroy(sub);
-    natsConnection_Destroy(nc);
-    Aws::ShutdownAPI(options);
-
+    std::cout << to_string(process_request(event_data, get_mode())) << "\n";
     return 0;
 }
-

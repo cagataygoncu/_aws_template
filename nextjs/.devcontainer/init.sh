@@ -17,3 +17,18 @@ touch "$HOME/.gitconfig" "$HOME/.ssh/config"
 # a private repository - run `ssh-add ~/.ssh/<key>` on the machine you are
 # sitting at, not on the host running docker.
 ssh-add -l || echo "WARNING: no keys in the ssh agent"
+
+# The base images come from ECR Public. A login token lasts 12 hours, and once
+# it expires docker keeps sending it instead of falling back to an anonymous
+# pull - the rebuild then dies with "Your authorization token has expired".
+# Refresh it here; if that is not possible (no credentials, offline) drop the
+# stale one so anonymous pulls work again.
+if command -v aws >/dev/null 2>&1 && command -v docker >/dev/null 2>&1; then
+    if aws ecr-public get-login-password --region us-east-1 2>/dev/null \
+        | docker login --username AWS --password-stdin public.ecr.aws >/dev/null 2>&1; then
+        echo "ecr public: token refreshed"
+    else
+        echo "WARNING: could not refresh the ECR Public token - falling back to anonymous pulls"
+        docker logout public.ecr.aws >/dev/null 2>&1 || true
+    fi
+fi

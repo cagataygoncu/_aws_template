@@ -1,159 +1,105 @@
 package main
 
 import (
-	"bytes"
-	"context"
+	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"time"
-
-	"runtime"
-	"sync"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/nats-io/nats.go"
+	"os"
+	"strings"
 )
 
-const N_FILE_SAVE_WORKER = 50
-const N_SUBSCRIBER = 10
+// Mode decides where the service gets the things it depends on. Deployed code
+// is online; a local run opts out with MODE=local.
+//
+// Online is the default so that nothing has to be set on AWS, and forgetting
+// to set it locally fails loudly on the first AWS call rather than silently
+// running against stub data in production.
+type Mode string
 
 const (
-	maxConnections = 50
-	bucketName    = "2025-aus-summer-aa"
-	natsServer    = "nats://k8s-default-external-0b802e4465-7b7828d8e5f3b016.elb.ap-southeast-2.amazonaws.com:4224"
-	natsSubject   = "external.datafeed.realtime.rla"
+	ModeOnline Mode = "online"
+	ModeLocal  Mode = "local"
 )
 
-type FileSaveWorkerPool struct {
-	workers             chan struct{}
-	save_directory_name string
-	is_active           int
-	client              *s3.Client
-}
-
-func create_s3_client() (*s3.Client, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion("ap-southeast-2"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		o.UsePathStyle = true
-		o.HTTPClient = &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 100,
-				MaxConnsPerHost:     100,
-				IdleConnTimeout:     90 * time.Second,
-			},
-		}
-	})
-
-	return client, nil
- }
-
-func save_message_with_pool(msg []byte, pool *FileSaveWorkerPool) {
-	pool.workers <- struct{}{}
-	defer func() { <-pool.workers }()
-
-	save_directory_name := pool.save_directory_name
-	timestamp := fmt.Sprintf("%d", time.Now().UnixMicro())
-	filename := fmt.Sprintf("%s/%s.json", save_directory_name, timestamp)
-
-
-    _, err := pool.client.PutObject(context.TODO(), &s3.PutObjectInput{
-        Bucket: aws.String(bucketName),
-        Key:    aws.String(filename),
-        Body:   bytes.NewReader(msg),
-    })
-	if err != nil {
-		log.Printf("Error saving message: %v", err)
+func getMode() Mode {
+	mode := Mode(strings.ToLower(os.Getenv("MODE")))
+	switch mode {
+	case ModeOnline, ModeLocal:
+		return mode
+	case "":
+		return ModeOnline
+	default:
+		log.Printf("unknown MODE %q, falling back to %s", mode, ModeOnline)
+		return ModeOnline
 	}
 }
 
-func handle_message(worker_id int, msg *nats.Msg, pool *FileSaveWorkerPool) {
-	if pool.is_active > 0 {
-		go save_message_with_pool(msg.Data, pool)
+// Config is whatever the request handler needs that comes from outside it.
+// Online it comes from the environment the deployment sets - container_config.env
+// for ECS, the function configuration for Lambda - and this is where a call to
+// Secrets Manager or Parameter Store belongs. Locally it is filled in with
+// values that need no AWS account.
+type Config struct {
+	ServiceName string `json:"service_name"`
+	Environment string `json:"environment"`
+}
+
+func loadConfig(mode Mode) Config {
+	if mode == ModeLocal {
+		return Config{ServiceName: "local", Environment: "dev"}
+	}
+
+	// Add the AWS lookups this service needs here, e.g.
+	//   cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	//   out, err := secretsmanager.NewFromConfig(cfg).GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+	//       SecretId: aws.String(os.Getenv("SECRET_NAME")),
+	//   })
+	// The task role already has the permissions; nothing needs credentials.
+	return Config{
+		ServiceName: os.Getenv("SERVICE_NAME"),
+		Environment: os.Getenv("ENVIRONMENT"),
 	}
 }
 
-func start_queue_subscriber(nc *nats.Conn, worker_id int, subject string, queue_group string, wg *sync.WaitGroup, pool *FileSaveWorkerPool) {
-	defer wg.Done()
+// processRequest is the one function a target calls: the server handler, the
+// task loop and the Lambda handler all funnel into it, so the behaviour is the
+// same however this is deployed.
+func processRequest(eventData string, mode Mode) (map[string]any, error) {
+	config := loadConfig(mode)
 
-	sub, err := nc.QueueSubscribe(
-		subject,
-		queue_group,
-		func(msg *nats.Msg) { handle_message(worker_id, msg, pool) },
-	)
+	input := map[string]any{"event_data": eventData, "mode": string(mode)}
+	log.Printf("input: %v", input)
 
-	if err != nil {
-		log.Printf("Worker %d subscription error: %v", worker_id, err)
-		return
+	output := map[string]any{
+		"service": config.ServiceName,
+		"env":     config.Environment,
+		"echo":    eventData,
+		"length":  len(eventData),
 	}
-	defer sub.Unsubscribe()
 
-	// wait forever
-	select {}
-}
-
-func run_action_audio(pool *FileSaveWorkerPool, court string) {
-	numCPU := runtime.NumCPU()
-	currentProcs := runtime.GOMAXPROCS(0)
-
-	fmt.Printf("Logical CPUs: %d\n", numCPU)
-	fmt.Printf("Current GOMAXPROCS: %d\n", currentProcs)
-
-	n_procs := 2
-	fmt.Printf("Setting GOMAXPROCS: %d\n", n_procs)
-	runtime.GOMAXPROCS(n_procs)
-
-	var wg sync.WaitGroup
-	n_subscriber := N_SUBSCRIBER
-	subject := fmt.Sprintf("external.datafeed.realtime.%s", court)
-	queue_group := fmt.Sprintf("cggig.realtime.%s", court)
-
-	remote_url := natsServer
-	username := "tennis-australia"
-	password := "AlTZALkwIndisHfUrUERbY"
-
-	// connect to remote nats server
-	remote_nc, err := nats.Connect(remote_url,
-		nats.UserInfo(username, password))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer remote_nc.Close()
-
-	for i := 0; i < n_subscriber; i++ {
-		wg.Add(1)
-		go start_queue_subscriber(remote_nc, i+1, subject, queue_group, &wg, pool)
-	}
-	wg.Wait()
+	log.Printf("output: %v for input: %v", output, input)
+	return output, nil
 }
 
 func main() {
-	court := "rla"
+	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
+	log.SetPrefix("main: ")
 
-	n_file_save_worker := N_FILE_SAVE_WORKER
-	timestamp := fmt.Sprintf("%d", time.Now().UnixMicro())
-	save_directory_name := fmt.Sprintf("messages_golang/%s/%s", court, timestamp)
+	mode := getMode()
 
-	client, err := create_s3_client()
+	eventData := "test"
+	if len(os.Args) > 1 {
+		eventData = strings.Join(os.Args[1:], " ")
+	}
+
+	output, err := processRequest(eventData, mode)
 	if err != nil {
-		log.Printf("Error create_s3_client: %v", err)
+		log.Fatalf("processRequest: %v", err)
 	}
 
-	pool := &FileSaveWorkerPool{
-		workers:             make(chan struct{}, n_file_save_worker),
-		save_directory_name: save_directory_name,
-		is_active:           1,
-		client:              client,
+	encoded, err := json.Marshal(output)
+	if err != nil {
+		log.Fatalf("marshal output: %v", err)
 	}
-
-	run_action_audio(pool, court)
+	fmt.Println(string(encoded))
 }

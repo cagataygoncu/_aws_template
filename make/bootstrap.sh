@@ -100,7 +100,7 @@ case "$language" in
         container_cmd_server="!Sub 'src.main_server:app --host 0.0.0.0 --port \${ContainerPort}'"
         ;;
     golang)
-        language_version="${LANGUAGE_VERSION:-1.23}"
+        language_version="${LANGUAGE_VERSION:-1.25}"
         base_image_lambda="public.ecr.aws/lambda/provided:al2023"
         base_image_service="public.ecr.aws/docker/library/golang:${language_version}-bookworm"
         # A compiled binary takes no arguments, but the ECS module splits the

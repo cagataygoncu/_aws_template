@@ -1,7 +1,19 @@
 {
     "go.useLanguageServer": true,
     // "go.languageServerFlags": [],
-    "go.lintTool": "golint",
-    "go.lintOnSave": "file",
-    "go.lintFlags": []
+
+    // staticcheck runs inside gopls rather than as a separate client-side
+    // pass. One process, no extra binary to install in the devcontainer, and
+    // diagnostics update as you type instead of on save.
+    //
+    // Setting go.lintTool here as well would run it twice: the extension
+    // treats an unset gopls.ui.diagnostic.staticcheck as enabled, so
+    // go.lintTool=staticcheck plus useLanguageServer is enough to produce
+    // "duplicate diagnostics". lintOnSave=off keeps the client-side pass out
+    // of it entirely. (golint, the old value here, was archived upstream in
+    // 2021.)
+    "gopls": {
+        "ui.diagnostic.staticcheck": true
+    },
+    "go.lintOnSave": "off"
 }
