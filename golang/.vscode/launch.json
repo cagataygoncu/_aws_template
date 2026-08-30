@@ -2,14 +2,52 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run src",
+            // Debug whichever main.go is open - src/main_task, src/main_server
+            // or src/main_lambda. ${fileDirname} is the package containing the
+            // active file, so F5 does the obvious thing without picking a
+            // configuration first.
+            "name": "Debug current entrypoint",
             "type": "go",
             "request": "launch",
             "mode": "debug",
-            "program": "${workspaceFolder}/src",
+            "program": "${fileDirname}",
             "cwd": "${workspaceFolder}",
             "env": { "MODE": "local" },
             "args": []
+        },
+        {
+            "name": "Task",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/src/main_task",
+            "cwd": "${workspaceFolder}",
+            "env": { "MODE": "local" },
+            "args": ["test"]
+        },
+        {
+            // PORT is what the binary binds; the deployed server takes it from
+            // app.DefaultPort, substituted from the same value as ContainerPort.
+            "name": "Server",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/src/main_server",
+            "cwd": "${workspaceFolder}",
+            "env": { "MODE": "local", "PORT": "{{CONTAINER_PORT}}" }
+        },
+        {
+            // The Lambda entrypoint blocks in lambda.Start waiting for the
+            // runtime API, so this is for stepping into Handler with a
+            // breakpoint rather than for a normal run. `make run` + `make
+            // invoke` exercises it properly through the runtime emulator.
+            "name": "Lambda handler",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/src/main_lambda",
+            "cwd": "${workspaceFolder}",
+            "env": { "MODE": "local" }
         },
         {
             "name": "Unit tests",

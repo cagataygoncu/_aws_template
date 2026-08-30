@@ -41,6 +41,13 @@ export AWS_PROFILE AWS_REGION AWS_DEFAULT_REGION
 CICD_STACK_NAME="${STACK_NAME}-cicd"
 CICD_FILE_NAME="targets/common/cicd.yaml"
 
+# Remote host for `upload`, an entry in ~/.ssh/config. No default: naming the
+# wrong box is worse than being asked.
+REMOTE_HOST="${REMOTE_HOST:-}"
+# Relative to the remote home on purpose: an absolute default would have to
+# guess the remote user.
+REMOTE_DIR="${REMOTE_DIR:-dev}"
+
 # Bucket the deployment templates pull their nested stacks from, by version.
 TEMPLATE_BUCKET="${TEMPLATE_BUCKET:-gig-cfn-templates}"
 
@@ -355,6 +362,59 @@ remote() {
         git remote add "$STACK_NAME" "$url"
     fi
     echo "remote ${STACK_NAME} -> ${url}"
+}
+
+# Copy this project to a remote host over ssh, for working on a box that has no
+# clone of it - a project not on GitHub yet, or local changes you do not want to
+# commit just to move them. `git clone` on the remote is still the right tool
+# once the repository exists somewhere.
+#
+# The host is an entry in ~/.ssh/config, so it inherits whatever that entry
+# says - including a ProxyCommand, which is how the gig-builder boxes are
+# reached (they have no inbound port; see the builder Makefile's ssh-config).
+#
+#   upload gig-builder-aolabs
+#   REMOTE_HOST=gig-builder-aolabs upload
+#   upload gig-builder-aolabs DRY_RUN=1     # print what would transfer
+#
+# Lands in <REMOTE_DIR>/<project>, ~/dev/<project> by default. Excludes what
+# should be rebuilt on the far side rather than copied: the venv is the big one
+# - a macOS interpreter is useless on Linux, and it is the mistake that makes
+# a devcontainer silently fail there.
+upload() {
+    local host="${1:-$REMOTE_HOST}"
+    [[ -n "$host" ]] \
+        || die "ERROR: which host? upload <host>, or export REMOTE_HOST=... (an entry in ~/.ssh/config)"
+
+    local -a options
+    options=(
+        --archive --compress --human-readable --partial --progress
+        --exclude "venv/" --exclude ".venv/" --exclude "node_modules/"
+        --exclude "build/" --exclude "_build/" --exclude "deps/"
+        --exclude "__pycache__/" --exclude "*.pyc" --exclude ".mypy_cache/"
+        --exclude ".pytest_cache/" --exclude ".DS_Store"
+    )
+    # .git is excluded by default: rsyncing over an existing clone's history is
+    # a good way to corrupt it. WITH_GIT=1 includes it, which is what you want
+    # for a project that has no remote yet and whose history would otherwise
+    # not survive the trip.
+    [[ -n "${WITH_GIT:-}" ]] || options+=(--exclude ".git/")
+    [[ -n "${DRY_RUN:-}" ]] && options+=(--dry-run)
+
+    # One round trip: create the directory and learn its absolute path, so the
+    # lines printed at the end are ones you can actually paste.
+    local destination
+    destination=$(ssh "$host" "mkdir -p \"${REMOTE_DIR}/${PROJECT_NAME}\" && cd \"${REMOTE_DIR}/${PROJECT_NAME}\" && pwd") \
+        || die "ERROR: cannot reach ${host} - check ~/.ssh/config, and that the box is running"
+
+    # Trailing slash on the source: copy the contents into <destination>, not
+    # into <destination>/<project>.
+    rsync "${options[@]}" "${PWD}/" "${host}:${destination}/"
+
+    echo ""
+    echo "uploaded to ${host}:${destination}"
+    echo "  ssh ${host}"
+    echo "  code --folder-uri \"vscode-remote://ssh-remote+${host}${destination}\""
 }
 
 # Push a branch to CodeCommit as main, which starts the pipeline. Defaults to
@@ -905,6 +965,8 @@ pipeline
   validate       [target]                     cicd + deployment templates
   deploy-cicd    [target]                     create/update the pipeline stack
   remote                                      point git remote at CodeCommit
+  upload         [host]                       rsync this project to a remote
+                                              host; DRY_RUN=1 to preview
   push           [branch]                     push to CodeCommit, start pipeline
   pipeline                                    stage states
   pipeline-stop                               abandon the running execution
@@ -957,6 +1019,7 @@ case "$command" in
     validate)       validate     "$@" ;;
     deploy-cicd)    deploy_cicd  "$@" ;;
     remote)         remote            ;;
+    upload)         upload       "$@" ;;
     push)           push         "$@" ;;
     pipeline)       pipeline          ;;
     pipeline-stop)  pipeline_stop     ;;

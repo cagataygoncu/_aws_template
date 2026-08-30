@@ -100,7 +100,8 @@ case "$language" in
         container_cmd_server="!Sub 'src.main_server:app --host 0.0.0.0 --port \${ContainerPort}'"
         ;;
     golang)
-        language_version="${LANGUAGE_VERSION:-1.25}"
+        # 1.26 is the floor: aws-lambda-go v1.55 and gopls both require it.
+        language_version="${LANGUAGE_VERSION:-1.26}"
         base_image_lambda="public.ecr.aws/lambda/provided:al2023"
         base_image_service="public.ecr.aws/docker/library/golang:${language_version}-bookworm"
         # A compiled binary takes no arguments, but the ECS module splits the
@@ -110,9 +111,12 @@ case "$language" in
         container_port="5040"
         container_workdir="/app/build"
         container_entrypoint_task="/usr/bin/env"
-        container_cmd_task="'/app/build/main'"
+        # One binary per entrypoint, the same shape as python's
+        # src/main_task.py and src/main_server.py - so the command picks the
+        # target rather than the binary having to work out which it is.
+        container_cmd_task="'/app/build/task'"
         container_entrypoint_server="/usr/bin/env"
-        container_cmd_server="'/app/build/main'"
+        container_cmd_server="'/app/build/server'"
         ;;
     cpp)
         # No single toolchain version: the images are named by distro release.

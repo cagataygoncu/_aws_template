@@ -36,9 +36,11 @@ RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN sed /^StrictHostKeyChecking/d /etc/ssh/ssh_config; \
     echo StrictHostKeyChecking no >> /etc/ssh/ssh_config
 
-RUN go install -v golang.org/x/tools/gopls@latest \
-    && go install -v github.com/go-delve/delve/cmd/dlv@latest \
-    && go install -v golang.org/x/tools/gopls@latest
+# gopls and dlv track the newest Go release, and the official golang image sets
+# GOTOOLCHAIN=local, which forbids fetching a newer toolchain to build them:
+#   gopls@v0.23.0 requires go >= 1.26.0 (running go 1.25.14; GOTOOLCHAIN=local)
+# GOTOOLCHAIN=auto lets the tool build with whatever it needs, while the
+# application below still builds with the pinned language_version.
 
 COPY ./src /app/src
 COPY ./go.mod /app/go.mod
@@ -51,13 +53,14 @@ RUN --mount=type=ssh \
     export GOPRIVATE=github.com/GIGTennis/* && \
     export GONOSUMDB=github.com/GIGTennis/* && \
     export GIT_SSH_COMMAND="ssh -v" && \
-    go mod tidy && go build -o /app/build/main src/*.go
+    go mod tidy \
+    && go build -o /app/build/task   ./src/main_task \
+    && go build -o /app/build/server ./src/main_server
 
 ################################################################################################
 # FROM release AS final
 FROM ${BASE_IMAGE_URI} AS final
 
-COPY --from=builder /app/build/main /app/build/main
 
 WORKDIR /app/build
 

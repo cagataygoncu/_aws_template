@@ -7,4 +7,16 @@
 !/src
 !/lib
 !/targets
+
+# Dependency manifests. One file serves every language layer, so each
+# language's manifests are listed here - a missing entry fails the build at
+# "COPY ./<file>" with no explanation, because the file simply is not in the
+# build context.
 !requirements.txt
+!/go.mod
+!/go.sum
+!/mix.exs
+!/mix.lock
+!/package.json
+!/package-lock.json
+!/CMakeLists.txt

@@ -1,5 +1,19 @@
 # FROM --platform=linux/amd64 public.ecr.aws/ubuntu/ubuntu:24.04
-FROM --platform=linux/arm64 public.ecr.aws/ubuntu/ubuntu:22.04 AS builder
+# No --platform pin, unlike the target Dockerfiles: this image follows the host
+# architecture on purpose. gdb debugs through ptrace, and ptrace on an emulated
+# process fails, so a pinned image gets as far as building and then dies with
+# an i/o error the moment the debugger attaches. The pin here was linux/arm64,
+# which is native on an Apple Silicon Mac but emulated on the x86_64 builder -
+# so debugging worked in one place and not the other. The deployed images get
+# their platform from the build command (build_platform() in
+# make/commands.sh); fidelity to them comes from the service and lambda
+# variants, not from here.
+#
+# The image itself is {{BASE_IMAGE_SERVICE}}, substituted at bootstrap from the
+# same value the deployed service image uses - debian:bookworm by default. It
+# was hardcoded to ubuntu:22.04, so the dev container and the deployed image
+# were different distributions and LANGUAGE_VERSION never reached this file.
+FROM {{BASE_IMAGE_SERVICE}} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -33,7 +47,7 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv
 RUN curl -L "https://raw.githubusercontent.com/scop/bash-completion/refs/heads/main/bash_completion" -o /etc/bash_completion
 
 ########################################################################################################
-FROM --platform=linux/arm64 public.ecr.aws/ubuntu/ubuntu:22.04 AS release
+FROM {{BASE_IMAGE_SERVICE}} AS release
 
 ENV DEBIAN_FRONTEND=noninteractive
 

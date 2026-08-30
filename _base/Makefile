@@ -10,6 +10,7 @@
 #   make validate      [target]
 #   make deploy-cicd   [target]        create/update the pipeline stack
 #   make push          [branch]        push to CodeCommit, start the pipeline
+#   make upload        [host]          rsync this project to a remote host
 #   make pipeline                      stage states
 #   make outputs       [stack]
 #   make url
@@ -24,6 +25,14 @@
 #
 #   make deploy-cicd                   uses $(TARGET)
 #   make deploy-cicd lambda            just this once
+#
+# `make upload` copies the working tree to a box over ssh, for a project that
+# has no remote to clone from yet, or changes you do not want to commit just to
+# move them. The host is an entry in ~/.ssh/config:
+#
+#   make upload gig-builder-aolabs
+#   make upload gig-builder-aolabs DRY_RUN=1     what would transfer
+#   make upload gig-builder-aolabs WITH_GIT=1    take the history too
 #
 # Override the project or the account per invocation:
 #
@@ -60,6 +69,15 @@ BUILD_PLATFORM ?=
 # variable replaces it, so keep MODE=... in whatever you pass.
 RUN_ENV    ?= MODE=local
 
+# `make upload` destination. REMOTE_HOST has no default - naming the wrong box
+# is worse than being asked. REMOTE_DIR is relative to the remote home.
+REMOTE_HOST ?=
+REMOTE_DIR  ?= dev
+export REMOTE_HOST
+export REMOTE_DIR
+export DRY_RUN
+export WITH_GIT
+
 COMMANDS := ./make/commands.sh
 
 # Positional arguments: every goal after the target name. They are declared
@@ -74,7 +92,7 @@ endif
 .DEFAULT_GOAL := help
 
 .PHONY: help local-dev-setup info targets template-version aws-info validate deploy-cicd remote push pipeline \
-        pipeline-stop outputs output-value url events logs delete-stack \
+        pipeline-stop upload outputs output-value url events logs delete-stack \
         delete-cicd delete-all build run invoke local-logs shell stop
 
 help:          ; @$(COMMANDS) help
@@ -88,6 +106,7 @@ validate:      ; @$(COMMANDS) validate      $(ARGS)
 deploy-cicd:   ; @$(COMMANDS) deploy-cicd   $(ARGS)
 remote:        ; @$(COMMANDS) remote
 push:          ; @$(COMMANDS) push          $(ARGS)
+upload:        ; @$(COMMANDS) upload        $(ARGS)
 pipeline:      ; @$(COMMANDS) pipeline
 pipeline-stop: ; @$(COMMANDS) pipeline-stop
 

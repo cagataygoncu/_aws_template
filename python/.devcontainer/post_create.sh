@@ -16,8 +16,29 @@ pip3 install --no-cache-dir --upgrade -r /.devcontainer/requirements_dev.txt
 # architecture: the dev image pins linux/amd64, the target variants follow the
 # host. An x86_64 installer in an arm64 container dies with "rosetta error:
 # failed to open elf".
+# The installer ships as a zip, and the target variants are the deployed
+# images - lean, and without unzip. Missing it exits 127, which under set -e
+# takes the whole postCreateCommand down ("failed with exit code 127. Skipping
+# any further user-provided commands"), so install it if we can and carry on
+# without the CLI if we cannot.
+install_unzip() {
+    command -v unzip > /dev/null 2>&1 && return 0
+    if command -v apt-get > /dev/null 2>&1; then
+        apt-get update && apt-get install -y --no-install-recommends unzip
+    elif command -v dnf > /dev/null 2>&1; then
+        dnf install -y unzip
+    elif command -v microdnf > /dev/null 2>&1; then
+        microdnf install -y unzip
+    elif command -v yum > /dev/null 2>&1; then
+        yum install -y unzip
+    fi
+    command -v unzip > /dev/null 2>&1
+}
+
 if command -v aws > /dev/null 2>&1; then
     echo "aws cli already present: $(aws --version)"
+elif ! install_unzip; then
+    echo "WARNING: no unzip and no package manager to install it - skipping the AWS CLI"
 else
     AWS_CLI_ARCH=$(uname -m)
     curl "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_CLI_ARCH}.zip" -o "awscliv2.zip"

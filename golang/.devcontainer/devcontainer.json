@@ -25,6 +25,16 @@
         "--privileged"
     ],
     "mounts": [
+        // Adding a dependency inside the container needs the ssh agent, which
+        // the image build gets through --ssh=default but the running container
+        // does not. Uncomment the pair below to forward it. The source differs
+        // by host: Docker Desktop on macOS exposes the agent at the magic path
+        // shown; on a Linux host (a devcontainer over Remote-SSH on the
+        // builder) use "source=${localEnv:SSH_AUTH_SOCK}" instead. A bind
+        // mount whose source does not exist stops the container from starting,
+        // so pick the one that matches where you run.
+        // "source=/run/host-services/ssh-auth.sock,target=/ssh-agent,type=bind",
+
         // ./venv on the host is a macOS environment; bind-mounted into a Linux
         // container its interpreter cannot execute, and the Python extension will
         // happily pick it and fail silently. An empty volume hides it.
@@ -36,6 +46,9 @@
         "source=${localEnv:HOME}/data,target=/data,readonly,type=bind"
     ],
     // Use 'initializeCommand' to run commands on the host machine including container creation and on subsequent starts.
+    // Goes with the ssh-agent mount above.
+    // "remoteEnv": { "SSH_AUTH_SOCK": "/ssh-agent" },
+
     "containerEnv": {
         // `docker run -v` is resolved by the host's daemon - see commands.sh.
         "AWS_CONFIG_HOST_DIR": "${localEnv:HOME}/.aws"

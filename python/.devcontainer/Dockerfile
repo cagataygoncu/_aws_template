@@ -1,4 +1,10 @@
-FROM --platform=linux/amd64 public.ecr.aws/docker/library/python:{{LANGUAGE_VERSION}}
+# No --platform pin: this image follows the host architecture, so it is native
+# on both an Apple Silicon Mac and the x86_64 builder. debugpy runs in-process
+# and needs no ptrace, so unlike the go and cpp layers nothing was broken by
+# the pin - it only cost emulation speed on every pip install and test run.
+# The deployed images take their platform from the build command
+# (build_platform() in make/commands.sh), so they still match Fargate.
+FROM public.ecr.aws/docker/library/python:{{LANGUAGE_VERSION}}
 
 RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN sed /^StrictHostKeyChecking/d /etc/ssh/ssh_config; \

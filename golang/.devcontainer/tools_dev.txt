@@ -1,0 +1,8 @@
+# Go development tools, installed into the container by post_create.sh - never
+# baked into the image, the same way python/.devcontainer/requirements_dev.txt
+# keeps debugpy out of the deployed image. Every devcontainer variant that has
+# a Go toolchain gets these, so the debugger works in all of them.
+#
+# One module@version per line; blank lines and # comments ignored.
+github.com/go-delve/delve/cmd/dlv@latest
+golang.org/x/tools/gopls@latest

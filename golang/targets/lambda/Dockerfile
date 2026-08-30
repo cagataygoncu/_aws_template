@@ -45,7 +45,7 @@ RUN --mount=type=ssh \
     export GIT_SSH_COMMAND="ssh -v" && \
     go mod tidy && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -tags lambda.norpc -ldflags="-s -w" -o /app/build/bootstrap src/*.go
+    go build -tags lambda.norpc -ldflags="-s -w" -o /app/build/bootstrap ./src/main_lambda
 
 ################################################################################################
 # Final stage - copy the bootstrap binary into the Lambda runtime image
