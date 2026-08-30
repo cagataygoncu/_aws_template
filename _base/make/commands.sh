@@ -44,9 +44,9 @@ CICD_FILE_NAME="targets/common/cicd.yaml"
 # Remote host for `upload`, an entry in ~/.ssh/config. No default: naming the
 # wrong box is worse than being asked.
 REMOTE_HOST="${REMOTE_HOST:-}"
-# Relative to the remote home on purpose: an absolute default would have to
-# guess the remote user.
-REMOTE_DIR="${REMOTE_DIR:-dev}"
+# No default either: a directory you cannot see in the command is one you
+# cannot recall later. Relative paths resolve against the remote home.
+REMOTE_DIR="${REMOTE_DIR:-}"
 
 # Bucket the deployment templates pull their nested stacks from, by version.
 TEMPLATE_BUCKET="${TEMPLATE_BUCKET:-gig-cfn-templates}"
@@ -373,18 +373,27 @@ remote() {
 # says - including a ProxyCommand, which is how the gig-builder boxes are
 # reached (they have no inbound port; see the builder Makefile's ssh-config).
 #
-#   upload gig-builder-aolabs
-#   REMOTE_HOST=gig-builder-aolabs upload
-#   upload gig-builder-aolabs DRY_RUN=1     # print what would transfer
+#   upload gig-builder-aolabs dev
+#   upload gig-builder-aolabs /media/data/projects
+#   REMOTE_HOST=... REMOTE_DIR=... upload
+#   upload gig-builder-aolabs dev DRY_RUN=1     # print what would transfer
 #
-# Lands in <REMOTE_DIR>/<project>, ~/dev/<project> by default. Excludes what
-# should be rebuilt on the far side rather than copied: the venv is the big one
-# - a macOS interpreter is useless on Linux, and it is the mistake that makes
-# a devcontainer silently fail there.
+# Both arguments are required. Neither has a default: a host or a directory you
+# cannot see in the command is one you cannot recall months later, and it makes
+# uploading to the wrong place silent. A relative directory resolves against the
+# remote home.
+#
+# Lands in <dir>/<project>. Excludes what should be rebuilt on the far side
+# rather than copied: the venv is the big one - a macOS interpreter is useless
+# on Linux, and it is the mistake that makes a devcontainer silently fail
+# there.
 upload() {
     local host="${1:-$REMOTE_HOST}"
+    local directory="${2:-$REMOTE_DIR}"
     [[ -n "$host" ]] \
-        || die "ERROR: which host? upload <host>, or export REMOTE_HOST=... (an entry in ~/.ssh/config)"
+        || die "ERROR: which host? upload <host> <directory>, or export REMOTE_HOST=... (an entry in ~/.ssh/config)"
+    [[ -n "$directory" ]] \
+        || die "ERROR: which directory on ${host}? upload ${host} <directory>, or export REMOTE_DIR=... (relative to the remote home)"
 
     local -a options
     options=(
@@ -404,7 +413,7 @@ upload() {
     # One round trip: create the directory and learn its absolute path, so the
     # lines printed at the end are ones you can actually paste.
     local destination
-    destination=$(ssh "$host" "mkdir -p \"${REMOTE_DIR}/${PROJECT_NAME}\" && cd \"${REMOTE_DIR}/${PROJECT_NAME}\" && pwd") \
+    destination=$(ssh "$host" "mkdir -p \"${directory}/${PROJECT_NAME}\" && cd \"${directory}/${PROJECT_NAME}\" && pwd") \
         || die "ERROR: cannot reach ${host} - check ~/.ssh/config, and that the box is running"
 
     # Trailing slash on the source: copy the contents into <destination>, not
@@ -965,7 +974,7 @@ pipeline
   validate       [target]                     cicd + deployment templates
   deploy-cicd    [target]                     create/update the pipeline stack
   remote                                      point git remote at CodeCommit
-  upload         [host]                       rsync this project to a remote
+  upload         <host> <directory>           rsync this project to a remote
                                               host; DRY_RUN=1 to preview
   push           [branch]                     push to CodeCommit, start pipeline
   pipeline                                    stage states

@@ -10,7 +10,7 @@
 #   make validate      [target]
 #   make deploy-cicd   [target]        create/update the pipeline stack
 #   make push          [branch]        push to CodeCommit, start the pipeline
-#   make upload        [host]          rsync this project to a remote host
+#   make upload    <host> <directory>  rsync this project to a remote host
 #   make pipeline                      stage states
 #   make outputs       [stack]
 #   make url
@@ -28,11 +28,15 @@
 #
 # `make upload` copies the working tree to a box over ssh, for a project that
 # has no remote to clone from yet, or changes you do not want to commit just to
-# move them. The host is an entry in ~/.ssh/config:
+# move them. The host is an entry in ~/.ssh/config; the directory is relative
+# to the remote home unless it starts with /. Both are required - neither has a
+# default, because a destination you cannot see in the command is one you
+# cannot recall later:
 #
-#   make upload gig-builder-aolabs
-#   make upload gig-builder-aolabs DRY_RUN=1     what would transfer
-#   make upload gig-builder-aolabs WITH_GIT=1    take the history too
+#   make upload gig-builder-aolabs dev
+#   make upload gig-builder-aolabs /media/data/projects
+#   make upload gig-builder-aolabs dev DRY_RUN=1     what would transfer
+#   make upload gig-builder-aolabs dev WITH_GIT=1    take the history too
 #
 # Override the project or the account per invocation:
 #
@@ -69,10 +73,10 @@ BUILD_PLATFORM ?=
 # variable replaces it, so keep MODE=... in whatever you pass.
 RUN_ENV    ?= MODE=local
 
-# `make upload` destination. REMOTE_HOST has no default - naming the wrong box
-# is worse than being asked. REMOTE_DIR is relative to the remote home.
+# `make upload` destination. Neither has a default on purpose: pass them on the
+# command line, or export them for a shell that is working on one box.
 REMOTE_HOST ?=
-REMOTE_DIR  ?= dev
+REMOTE_DIR  ?=
 export REMOTE_HOST
 export REMOTE_DIR
 export DRY_RUN
