@@ -38,8 +38,6 @@
         "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly,type=bind",
         "source=${localEnv:HOME}/.aws,target=/root/.aws,readonly,type=bind",
         "source=${localEnv:HOME}/.ssh/config,target=/root/.ssh/config,readonly,type=bind",
-        "source=${localEnv:HOME}/.ssh/id_rsa,target=/root/.ssh/id_rsa,readonly,type=bind",
-        "source=${localEnv:HOME}/.ssh/id_rsa.pub,target=/root/.ssh/id_rsa.pub,readonly,type=bind",
         "source=${localEnv:HOME}/data,target=/data,readonly,type=bind"
     ],
     "containerEnv": {
@@ -68,10 +66,10 @@
                 },
                 // The host settings.json points at ./venv, which does not
                 // exist in here; the image's interpreter already has the deps.
-                "python.defaultInterpreterPath": "/var/lang/bin/python3",
+                "python.defaultInterpreterPath": "/var/lang/bin/python",
                 // Ruff follows the selected interpreter; naming it here too
                 // keeps the formatter working before one is picked.
-                "ruff.interpreter": ["/var/lang/bin/python3"],
+                "ruff.interpreter": ["/var/lang/bin/python"],
                 "editor.defaultFormatter": "esbenp.prettier-vscode",
                 // VS Code flags "Value is not accepted." here unless Ruff is
                 // also installed on the host: the schema for

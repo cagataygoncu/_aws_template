@@ -33,8 +33,6 @@
         "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly,type=bind",
         "source=${localEnv:HOME}/.aws,target=/root/.aws,readonly,type=bind",
         "source=${localEnv:HOME}/.ssh/config,target=/root/.ssh/config,readonly,type=bind",
-        "source=${localEnv:HOME}/.ssh/id_rsa,target=/root/.ssh/id_rsa,readonly,type=bind",
-        "source=${localEnv:HOME}/.ssh/id_rsa.pub,target=/root/.ssh/id_rsa.pub,readonly,type=bind",
         "source=${localEnv:HOME}/data,target=/data,readonly,type=bind"
     ],
     // Use 'initializeCommand' to run commands on the host machine including container creation and on subsequent starts.

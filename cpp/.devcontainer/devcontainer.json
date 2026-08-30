@@ -38,8 +38,6 @@
         "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly,type=bind",
         "source=${localEnv:HOME}/.aws,target=/root/.aws,readonly,type=bind",
         "source=${localEnv:HOME}/.ssh/config,target=/root/.ssh/config,readonly,type=bind",
-        "source=${localEnv:HOME}/.ssh/id_rsa,target=/root/.ssh/id_rsa,readonly,type=bind",
-        "source=${localEnv:HOME}/.ssh/id_rsa.pub,target=/root/.ssh/id_rsa.pub,readonly,type=bind",
         "source=${localEnv:HOME}/data,target=/data,readonly,type=bind",
         "source=/Users/cgoncu/Dropbox/my/dev,target=/Users/cgoncu/Dropbox/my/dev,readonly,type=bind",
         "source=/tmp/.X11-unix,target=/tmp/.X11-unix:,readonly,type=bind"

@@ -417,11 +417,17 @@ the container after the project and forwards that language's port, and the
 image matches the one the service is built on — python 3.12, node 20, elixir
 1.19-otp-27, go 1.23, Ubuntu for C++.
 
-The container binds `~/.aws`, `~/.gitconfig`, `~/.ssh/{config,id_rsa}` and
-`~/data` from the host read-only, and forwards the ssh agent so builds can pull
-private repositories. `initializeCommand` creates `~/data` if it is missing —
-a bind mount to a path that does not exist fails container creation before any
-log is visible. The other four are expected to be there.
+The container binds `~/.aws`, `~/.gitconfig`, `~/.ssh/config` and `~/data` from
+the host read-only, and forwards the ssh agent so builds can pull private
+repositories. No private key is mounted: the agent is the only credential path,
+which is what lets the same config work on a remote host that deliberately
+holds no keys.
+
+`initializeCommand` runs `.devcontainer/init.sh` on the host and creates every
+one of those paths first. A bind mount whose source does not exist fails
+container creation outright — `invalid mount config for type "bind"` — before
+any of it is visible in the log. Your laptop has them all; a fresh EC2 host
+reached over Remote-SSH has almost none.
 
 The AWS CLI is a devcontainer tool, not an image dependency: the deployed
 images have no CLI and do not need one — application code uses the SDK, and
@@ -516,7 +522,7 @@ installed whichever image you open. The Python one includes
 **`ms-python.debugpy`** explicitly: the debugger has been a separate extension
 from `ms-python.python` since 2023, and without it F5 does nothing in the
 container. The interpreter path is per image — `/usr/local/bin/python` in the
-dev and service images, `/var/lang/bin/python3` in the Lambda one, which keeps
+dev and service images, `/var/lang/bin/python` in the Lambda one, which keeps
 its runtime elsewhere — and `ruff.interpreter` names it too.
 
 The devcontainers also mask `./venv` with an empty volume. On a Mac that
