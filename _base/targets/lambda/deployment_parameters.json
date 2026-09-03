@@ -11,6 +11,6 @@
     "SubnetIds": "",
     "SecurityGroupIds": "",
     "EnvironmentVariables": "{ \"SERVICE_NAME\": \"{{PROJECT_NAME}}\", \"SECRET_NAME\": \"\", \"ENVIRONMENT\": \"dev\" } ",
-    "TemplateVersion": "v1.10.2"
+    "TemplateVersion": "v1.10.16"
   }
 }

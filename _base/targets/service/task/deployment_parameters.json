@@ -11,6 +11,6 @@
     "ConfigBucket": "gig-config",
     "ConfigFileName": "container_config.env",
     "ContainerEnvironmentFileArn": "",
-    "TemplateVersion": "v1.10.2"
+    "TemplateVersion": "v1.10.16"
   }
 }

@@ -422,6 +422,57 @@ make logs                      # lambda: from the stack output; ECS: make logs /
 make output-value LambdaFunctionUrl
 ```
 
+## Call the deployed service
+
+### lambda
+
+The function is deployed as `{{PROJECT_NAME}}-<LambdaFunctionName>`, which is
+not the `LambdaFunctionName` parameter — the nested module scopes it by
+project. Take it from the stack rather than assembling it:
+
+```zsh
+FUNCTION=$(make output-value LambdaFunctionName)
+
+aws lambda invoke --function-name "$FUNCTION" \
+    --cli-binary-format raw-in-base64-out \
+    --payload '{"test": 1}' \
+    /dev/stdout
+```
+
+That is the direct API call and it uses your `AWS_PROFILE`, so it is the one to
+reach for first.
+
+The function URL is a second route, and it is **`AuthType: AWS_IAM`** — a plain
+`curl` gets 403. It has to be SigV4-signed, so send credentials with it:
+
+```zsh
+set -a; source project.env; set +a          # AWS_PROFILE, AWS_REGION
+eval "$(aws configure export-credentials --profile "$AWS_PROFILE" --format env)"
+
+URL=$(make output-value LambdaFunctionUrl)
+
+curl -sS -X POST "$URL" \
+    --aws-sigv4 "aws:amz:${AWS_REGION}:lambda" \
+    --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+    -H "x-amz-security-token: ${AWS_SESSION_TOKEN}" \
+    -H "content-type: application/json" \
+    -d '{"test": 1}'
+```
+
+`--aws-sigv4` needs curl 8; `brew install curl` if the system one is older.
+
+The two paths differ in what the handler receives: `aws lambda invoke` delivers
+the payload as the event, while the function URL wraps it in an API Gateway v2
+request and the body arrives as a JSON string in `event["body"]`.
+
+### service/server
+
+`make url` prints the invoke URL, and there is no IAM in front of it:
+
+```zsh
+curl -sS "$(make url)/api/status"
+```
+
 ## Run locally
 
 The image is built from the same Dockerfile and base image the pipeline uses,
@@ -463,20 +514,16 @@ exits 0 and logs nothing — a broken run that looks like a successful one.
 
 The authoritative values are `ContainerEntryPoint` and `ContainerCmd` in the
 target's `deployment.yaml`. Those carry CloudFormation quoting, so drop the
-surrounding quotes when passing them here. For reference, across the language
-layers:
+surrounding quotes when passing them here — or run `make run` with neither and
+read them off the error, which prints the exact line for the target, port
+substituted:
 
-| Language | task / server entrypoint | task command | server command | lambda command |
-|---|---|---|---|---|
-| python | `python` / `uvicorn` | `src/main_task.py` | `src.main_server:app --host 0.0.0.0 --port <port>` | `src.main_lambda.lambda_handler_1` |
-| golang | `/usr/bin/env` | `/app/build/task` | `/app/build/server` | `bootstrap` |
-| cpp | `/usr/bin/env` | `/app/build/main` | `/app/build/main` | `bootstrap` |
-| nextjs | `node` | `server.mjs` | `server.mjs` | `src/lambda.handler` |
-| elixir | `/app/bin/<release>` | `start` | `start` | `bootstrap` |
-
-Go and C++ go through `/usr/bin/env` because the ECS module splits the command
-into the container's `Command` and cannot take an empty one; `env` execs the
-binary, which keeps it PID 1.
+```
+$ make run TARGET=lambda
+ERROR: no ENTRYPOINT and no CMD - the image would run its own default ...
+  lambda deploys this, from targets/lambda/deployment.yaml:
+    make run ENTRYPOINT="/lambda-entrypoint.sh" CMD="src.main_lambda.lambda_handler_1" TARGET=lambda
+```
 
 The container gets only the AWS variables by default — `AWS_PROFILE`,
 `AWS_REGION` and a read-only mount of `~/.aws`, so no credentials end up in its

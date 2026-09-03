@@ -208,6 +208,11 @@ Resources:
 Outputs:
     ApiInvokeURL:
         Value: !Sub ${ApiInvokeDomainUrl}/${LambdaFunctionName}
+    # The deployed name, which is what `aws lambda invoke` takes. The nested
+    # module scopes the function by project, so this is not the
+    # LambdaFunctionName parameter and cannot be assembled from it by eye.
+    LambdaFunctionName:
+        Value: !Sub '${ProjectName}-${LambdaFunctionName}'
     LambdaFunctionUrl:
         Value: !GetAtt LambdaStack.Outputs.LambdaFunctionUrl
     LambdaFunctionLogGroupName:

@@ -608,6 +608,25 @@ make shell
 make stop
 ```
 
+`ENTRYPOINT` and `CMD` are the `ContainerEntryPoint` and `ContainerCmd` the
+target's `deployment.yaml` sends, minus the CloudFormation quoting.
+`bootstrap.sh` fills those in per language, so they differ by layer:
+
+| Language | task / server entrypoint | task command | server command | lambda command |
+|---|---|---|---|---|
+| python | `python` / `uvicorn` | `src/main_task.py` | `src.main_server:app --host 0.0.0.0 --port <port>` | `src.main_lambda.lambda_handler_1` |
+| golang | `/usr/bin/env` | `/app/build/task` | `/app/build/server` | `bootstrap` |
+| cpp | `/usr/bin/env` | `/app/build/main` | `/app/build/main` | `bootstrap` |
+| nextjs | `node` | `server.mjs` | `server.mjs` | `src/lambda.handler` |
+| elixir | `/app/bin/<release>` | `start` | `start` | `bootstrap` |
+
+Go and C++ go through `/usr/bin/env` because the ECS module splits the command
+into the container's `Command` and cannot take an empty one; `env` execs the
+binary, which keeps it PID 1.
+
+A generated project does not carry this table — its own values are the only
+ones that apply there, and `make run` with neither argument prints them.
+
 `make build` builds for the platform the pipeline builds for, not the one your
 laptop runs. It reads `CodeBuildImage` from the target's
 `cicd_parameters.json` — `amazonlinux2-x86_64-standard` gives `linux/amd64`,

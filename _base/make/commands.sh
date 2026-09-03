@@ -337,6 +337,10 @@ info() {
     echo "RUN_ENV             ${RUN_ENV:-}"
     echo "TEMPLATE_BUCKET     ${TEMPLATE_BUCKET}"
     echo "CODECOMMIT_SSH_HOST ${CODECOMMIT_SSH_HOST}"
+    # Where `push` sends the branch. The remote is named after the stack, so
+    # a project with several stacks has several remotes and the one in use is
+    # not obvious from `git remote -v` alone.
+    echo "GIT_PUSHES_TO       ${STACK_NAME}/main -> $(git remote get-url "$STACK_NAME" 2>/dev/null || echo '<no such remote - deploy-cicd, or remote>')"
     echo "AWS_CONFIG_HOST_DIR ${AWS_CONFIG_HOST_DIR}"
     # Only when set: these are arguments to `upload`, not project settings, so
     # unset is the normal case and printing it every time says nothing.
@@ -1355,6 +1359,38 @@ deployment_value() {
     template_default "$template" "$name"
 }
 
+# The ContainerEntryPoint / ContainerCmd this target's deployment sends to its
+# nested stack. Unlike the values in deployment_parameters.json these are
+# written into the deployment template itself, so they are read from the line
+# rather than from a parameter - the CloudFormation quoting and the one !Sub
+# they use stripped off, leaving something that can be pasted into `make run`.
+#
+#   container_run_value lambda ContainerCmd   -> src.main_lambda.lambda_handler_1
+#
+container_run_value() {
+    local target=$1 key=$2 template value
+    template=$(parameter_value "$target" DeploymentCfnFilename 2>/dev/null || true)
+    [[ -n "$template" && -f "$template" ]] || return 0
+
+    value=$(grep -m1 -E "^[[:space:]]*${key}:[[:space:]]" "$template" 2>/dev/null \
+        | sed -e "s/^[[:space:]]*${key}:[[:space:]]*//" -e 's/[[:space:]]*$//')
+    [[ -n "$value" ]] || return 0
+
+    value=${value#!Sub }
+    value=${value#\'}
+    value=${value%\'}
+    value=${value#\"}
+    value=${value%\"}
+
+    # The only substitution these carry, and the one that would otherwise be
+    # pasted literally into a docker command.
+    if [[ "$value" == *'${ContainerPort}'* ]]; then
+        value=${value//\$\{ContainerPort\}/$(container_port "$target")}
+    fi
+
+    echo "$value"
+}
+
 # Where this target reads its environment file from, and whether it is there.
 #
 #   config
@@ -1372,14 +1408,19 @@ config() {
         if [[ -n "$file" && -f "$file" ]] \
             && jq -e '.Parameters | has("EnvironmentVariables")' "$file" > /dev/null 2>&1; then
             echo "local   ${CONFIG_FILE_NAME}"
-            echo "remote  ${file} (EnvironmentVariables, deployed by the pipeline)"
+            echo "remote  ${file} (EnvironmentVariables)"
+            echo "        not a bucket: these values travel with the template,"
+            echo "        so changing them is a commit and a push, not an upload"
             if [[ ! -f "$CONFIG_FILE_NAME" ]]; then
                 echo "status  no local ${CONFIG_FILE_NAME}"
             elif [[ "$(env_to_json "$CONFIG_FILE_NAME" | tr -s ' \n' ' ')" \
                 == "$(jq -r '.Parameters.EnvironmentVariables' "$file")" ]]; then
                 echo "status  in step"
             else
-                echo "status  DIFFERS from ${CONFIG_FILE_NAME} - config-upload to rewrite it"
+                echo "status  DIFFERS from ${CONFIG_FILE_NAME}"
+                echo "        config-upload writes the local file into ${file},"
+                echo "        then commit and push it - the function is unchanged until"
+                echo "        the pipeline redeploys"
             fi
             return 0
         fi
@@ -1674,11 +1715,23 @@ run() {
         local image_entrypoint image_cmd
         image_entrypoint=$(docker inspect --format '{{json .Config.Entrypoint}}' "${STACK_NAME}:latest" 2>/dev/null)
         image_cmd=$(docker inspect --format '{{json .Config.Cmd}}' "${STACK_NAME}:latest" 2>/dev/null)
+        # Quote back what THIS target deploys rather than an example from
+        # another one - the three targets take entirely different arguments,
+        # and a lambda handler pasted into a service run does nothing useful.
+        local want_entrypoint want_cmd deployment_file
+        deployment_file=$(parameter_value "$target" DeploymentCfnFilename)
+        want_entrypoint=$(container_run_value "$target" ContainerEntryPoint)
+        want_cmd=$(container_run_value "$target" ContainerCmd)
+
+        if [[ -n "$want_cmd" ]]; then
+            die "ERROR: no ENTRYPOINT and no CMD - the image would run its own default (entrypoint ${image_entrypoint:-?}, cmd ${image_cmd:-?}).
+  ${target} deploys this, from ${deployment_file}:
+    make run ENTRYPOINT=\"${want_entrypoint}\" CMD=\"${want_cmd}\" TARGET=${target}"
+        fi
+
         die "ERROR: no ENTRYPOINT and no CMD - the image would run its own default (entrypoint ${image_entrypoint:-?}, cmd ${image_cmd:-?}).
-  What this target runs is ContainerEntryPoint and ContainerCmd in $(parameter_value "$target" DeploymentCfnFilename); drop the CloudFormation quotes:
-    make run ENTRYPOINT=python CMD=\"src/main_task.py\"
-  For lambda the image entrypoint is kept on purpose, so pass the handler as the command:
-    make run ENTRYPOINT= CMD=\"src.main_lambda.lambda_handler_1\" TARGET=lambda"
+  What this target runs is ContainerEntryPoint and ContainerCmd in ${deployment_file}; drop the CloudFormation quotes:
+    make run ENTRYPOINT=<entrypoint> CMD=\"<arguments>\" TARGET=${target}"
     fi
 
     local entrypoint_args=()
