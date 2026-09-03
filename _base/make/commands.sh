@@ -25,8 +25,26 @@ set -euo pipefail
 #   AWS_PROFILE=gig-prod ./make/commands.sh outputs
 # ---------------------------------------------------------------------------
 
-PROJECT_NAME="${PROJECT_NAME:-$(basename "$PWD")}"
-TARGET="${TARGET:-service/task}"
+# No defaults. Both used to fall back - PROJECT_NAME to the directory basename,
+# TARGET to service/task - and both are values that select WHICH thing every
+# other command acts on. A directory basename in particular is a trap: a repo
+# whose folder is named after an older deployment would silently target that
+# deployment's stack whenever commands.sh ran without the Makefile exporting
+# these.
+#
+# The Makefile sets and exports both, so this only fires when commands.sh is
+# run directly, which is exactly when a wrong guess would be invisible.
+die_early() {
+    echo "$1" >&2
+    exit 1
+}
+
+PROJECT_NAME="${PROJECT_NAME:-}"
+TARGET="${TARGET:-}"
+[[ -n "$PROJECT_NAME" ]] \
+    || die_early "ERROR: PROJECT_NAME is not set. Run through the Makefile, or: PROJECT_NAME=<name> ./make/commands.sh ..."
+[[ -n "$TARGET" ]] \
+    || die_early "ERROR: TARGET is not set (lambda, service/task, service/server). Run through the Makefile, or: TARGET=<target> ./make/commands.sh ..."
 
 # CloudFormation stack names, and so the ProjectName parameter the pipeline
 # names its stack after, allow no underscores - but project directories here
@@ -68,11 +86,15 @@ CAPABILITIES=(CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND)
 LOCAL_PORT_LAMBDA=9000
 LOCAL_PORT_SERVICE=8080
 
-# The port the app listens on inside the container. Per language - node
-# serves 3000, a release 4000, uvicorn 5040 - so the project's Makefile sets
-# it, and it matches ContainerPort in the deployment template. The lambda
-# runtime emulator always listens on 8080, whatever the language.
-CONTAINER_PORT="${CONTAINER_PORT:-8080}"
+# The port the app listens on inside the container. Per language - node serves
+# 3000, a release 4000, uvicorn 5040 - so the project's Makefile sets it, and it
+# matches ContainerPort in the deployment template. No fallback: 8080 used to
+# stand in, which silently published the wrong port for every project that does
+# not use it. The lambda runtime emulator always listens on 8080, whatever the
+# language, and that one is a fact rather than a choice.
+CONTAINER_PORT="${CONTAINER_PORT:-}"
+[[ -n "$CONTAINER_PORT" ]] \
+    || die_early "ERROR: CONTAINER_PORT is not set. Run through the Makefile, or: CONTAINER_PORT=<port> ./make/commands.sh ..."
 LAMBDA_RUNTIME_PORT=8080
 
 CONTAINER_NAME="${STACK_NAME}-local"
@@ -256,20 +278,27 @@ info() {
     base_image=$(parameter_value "$target" BaseImageURI)
 
     echo "---"
-    echo "PROJECT_NAME       ${PROJECT_NAME}"
-    echo "STACK_NAME         ${STACK_NAME}"
-    echo "TARGET             ${target}"
-    echo "AWS_PROFILE        ${AWS_PROFILE}"
-    echo "AWS_REGION         ${AWS_REGION}"
-    echo "AWS_ACCOUNT        $(aws sts get-caller-identity --query Account --output text 2>/dev/null)"
-    echo "CICD_STACK_NAME    ${CICD_STACK_NAME}"
-    echo "DEPLOYMENT_STACK   ${STACK_NAME}"
-    echo "CICD_FILE_NAME     ${CICD_FILE_NAME}"
-    echo "CICD_PARAMETERS    ${parameters}"
-    echo "DEPLOYMENT_FILE    ${deployment_file}"
-    echo "DOCKER_FILE        ${docker_file}"
-    echo "BASE_IMAGE_URI     ${base_image}"
-    echo "BUILD_PLATFORM     ${BUILD_PLATFORM:-$(build_platform "$target")}"
+    echo "PROJECT_NAME        ${PROJECT_NAME}"
+    echo "STACK_NAME          ${STACK_NAME}"
+    echo "TARGET              ${target}"
+    echo "AWS_PROFILE         ${AWS_PROFILE}"
+    echo "AWS_REGION          ${AWS_REGION}"
+    echo "AWS_ACCOUNT         $(aws sts get-caller-identity --query Account --output text 2>/dev/null)"
+    echo "CICD_STACK_NAME     ${CICD_STACK_NAME}"
+    echo "DEPLOYMENT_STACK    ${STACK_NAME}"
+    echo "CICD_FILE_NAME      ${CICD_FILE_NAME}"
+    echo "CICD_PARAMETERS     ${parameters}"
+    echo "DEPLOYMENT_FILE     ${deployment_file}"
+    echo "DOCKER_FILE         ${docker_file}"
+    echo "BASE_IMAGE_URI      ${base_image}"
+    echo "BUILD_PLATFORM      ${BUILD_PLATFORM:-$(build_platform "$target")}"
+    echo "CONTAINER_PORT      $(container_port "$target")"
+    echo "RUN_ENV             ${RUN_ENV:-}"
+    echo "TEMPLATE_BUCKET     ${TEMPLATE_BUCKET}"
+    echo "CODECOMMIT_SSH_HOST ${CODECOMMIT_SSH_HOST}"
+    echo "AWS_CONFIG_HOST_DIR ${AWS_CONFIG_HOST_DIR}"
+    echo "REMOTE_HOST         ${REMOTE_HOST:-<unset, upload takes it as an argument>}"
+    echo "REMOTE_DIR          ${REMOTE_DIR:-<unset, upload takes it as an argument>}"
     echo "---"
 }
 
@@ -433,7 +462,12 @@ upload() {
 #   push dev
 #
 push() {
-    local branch="${1:-$(git rev-parse --abbrev-ref HEAD)}"
+    # The branch is required. It used to default to whatever was checked out,
+    # and this pushes to the remote's main whatever the local name - so the
+    # branch that gets deployed is worth saying out loud.
+    local branch="${1:-}"
+    [[ -n "$branch" ]] \
+        || die "ERROR: which branch? push <branch> - it is pushed to ${STACK_NAME}/main. Current branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
 
     git push "$STACK_NAME" "${branch}:main"
     pipeline
@@ -811,6 +845,21 @@ build() {
         echo '  eval "$(ssh-agent -s)" && ssh-add ~/.ssh/github_id_rsa' >&2
     fi
 
+    # An ECR Public login token lasts 12 hours, and docker keeps presenting an
+    # expired one instead of falling back to an anonymous pull - the build then
+    # fails on the FROM with "Your authorization token has expired". Refresh it,
+    # or drop it so anonymous pulls resume. Never fatal: a build that does not
+    # pull from ECR Public should not care.
+    if [[ "$base_image" == public.ecr.aws/* ]] && command -v aws > /dev/null 2>&1; then
+        if aws ecr-public get-login-password --region us-east-1 2>/dev/null \
+            | docker login --username AWS --password-stdin public.ecr.aws > /dev/null 2>&1; then
+            :
+        else
+            echo "warning: could not refresh the ECR Public token - anonymous pull" >&2
+            docker logout public.ecr.aws > /dev/null 2>&1 || true
+        fi
+    fi
+
     echo "building ${STACK_NAME}:latest from ${dockerfile} (${base_image}, ${platform})"
     # ${a[@]+"${a[@]}"} - bash 3.2, which macOS ships, treats an empty array
     # as unset under set -u.
@@ -946,9 +995,9 @@ stop() {
 #
 aws_info() {
     echo "---"
-    echo "AWS_PROFILE  ${AWS_PROFILE}"
-    echo "AWS_REGION   ${AWS_REGION}"
-    echo "AWS_ACCOUNT  $(aws sts get-caller-identity --query Account --output text 2>/dev/null)"
+    echo "AWS_PROFILE         ${AWS_PROFILE}"
+    echo "AWS_REGION          ${AWS_REGION}"
+    echo "AWS_ACCOUNT         $(aws sts get-caller-identity --query Account --output text 2>/dev/null)"
     echo "---"
 }
 
@@ -976,7 +1025,8 @@ pipeline
   remote                                      point git remote at CodeCommit
   upload         <host> <directory>           rsync this project to a remote
                                               host; DRY_RUN=1 to preview
-  push           [branch]                     push to CodeCommit, start pipeline
+  push           <branch>                     push <branch> to CodeCommit main,
+                                              starting the pipeline
   pipeline                                    stage states
   pipeline-stop                               abandon the running execution
 

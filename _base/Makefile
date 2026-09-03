@@ -9,7 +9,7 @@
 #   make info          [target]
 #   make validate      [target]
 #   make deploy-cicd   [target]        create/update the pipeline stack
-#   make push          [branch]        push to CodeCommit, start the pipeline
+#   make push      <branch>            push <branch> to CodeCommit main
 #   make upload    <host> <directory>  rsync this project to a remote host
 #   make pipeline                      stage states
 #   make outputs       [stack]
@@ -37,6 +37,14 @@
 #   make upload gig-builder-aolabs /media/data/projects
 #   make upload gig-builder-aolabs dev DRY_RUN=1     what would transfer
 #   make upload gig-builder-aolabs dev WITH_GIT=1    take the history too
+#
+# PROJECT_NAME and TARGET have no fallback inside commands.sh: they select
+# which stack and which target everything else acts on, so they are declared
+# here where you can see them, and running commands.sh directly without them
+# fails rather than guessing. Override either for one invocation:
+#
+#   make deploy-cicd PROJECT_NAME=lambda-test-1
+#   TARGET=lambda make build
 #
 # Override the project or the account per invocation:
 #
@@ -72,6 +80,10 @@ BUILD_PLATFORM ?=
 # machine; the deployed code sets nothing and so runs online. Overriding this
 # variable replaces it, so keep MODE=... in whatever you pass.
 RUN_ENV    ?= MODE=local
+# Exported so `make info` reports the value `make run` would use. It must come
+# AFTER the assignment: `export VAR` on its own defines VAR as empty, and the
+# ?= above would then decline to set it - which silently drops MODE=local.
+export RUN_ENV
 
 # `make upload` destination. Neither has a default on purpose: pass them on the
 # command line, or export them for a shell that is working on one box.

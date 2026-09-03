@@ -61,6 +61,16 @@ RUN --mount=type=ssh \
 # FROM release AS final
 FROM ${BASE_IMAGE_URI} AS final
 
+ARG ENV
+ARG DEBUG
+ENV APP_ENV=${ENV}
+ENV DEBUG_MODE=${DEBUG}
+
+# One binary per entrypoint; ContainerCmd in the target's deployment.yaml picks
+# which one runs, the same way python selects src/main_task.py or
+# src.main_server:app.
+COPY --from=builder /app/build/task   /app/build/task
+COPY --from=builder /app/build/server /app/build/server
 
 WORKDIR /app/build
 
