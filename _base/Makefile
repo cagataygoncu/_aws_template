@@ -13,7 +13,8 @@
 #   make deploy-cicd   [target]        create/update the pipeline stack
 #   make push      <branch>            push <branch> to CodeCommit main
 #   make upload    <host> <directory>  rsync this project to a remote host
-#   make pipeline                      stage states
+#   make pipeline                      stage states, with times
+#   make pipeline-errors               why the last run failed
 #   make outputs       [stack]
 #   make url
 #   make logs          [log-group]
@@ -134,6 +135,7 @@ remote:        ; @$(COMMANDS) remote
 push:          ; @$(COMMANDS) push          $(ARGS)
 upload:        ; @$(COMMANDS) upload        $(ARGS)
 pipeline:      ; @$(COMMANDS) pipeline
+pipeline-errors: ; @$(COMMANDS) pipeline-errors
 pipeline-stop: ; @$(COMMANDS) pipeline-stop
 
 outputs:       ; @$(COMMANDS) outputs       $(ARGS)

@@ -8,6 +8,37 @@ one function per command. Run `make help` for the full list, or
 `./make/commands.sh <command> ...` directly when debugging (from the project
 root, where the script's relative paths resolve).
 
+---
+
+> [!WARNING]
+> ## Set `PROJECT_NAME` before you deploy anything
+>
+> **`PROJECT_NAME` in `project.env` must be unique to this deployment.** Two
+> projects sharing a name do not get two deployments — they get one, and the
+> second person to run `make deploy-cicd` deploys *into the first one's
+> stacks*.
+>
+> ```zsh
+> # project.env
+> PROJECT_NAME=my-own-service      # <- yours, not whatever it says now
+> ```
+>
+> `PROJECT_NAME` names both CloudFormation stacks and, through them, the ECR
+> repository, the CodeCommit repository, the pipeline, the artifact bucket, the
+> IAM roles, the ECS service and the environment file's path in S3. The pipeline
+> deploys with `StackName: !Ref ProjectName`, so a shared name is not a
+> collision that fails loudly — **it is a silent overwrite of someone else's
+> running service**.
+>
+> Check it before the first deploy, and any time you are not certain what this
+> working copy is pointed at:
+>
+> ```zsh
+> make info | head -3
+> ```
+
+---
+
 ## Quick start
 
 ```zsh
@@ -15,14 +46,16 @@ make info                      # what every command is about to act on
 make config                    # is the environment file where ECS expects it?
 make config-upload             # put it there - nothing else will
 
-make validate                  # cicd.yaml + this target's deployment.yaml
 make build                     # the image the pipeline builds, same platform
 make run ENTRYPOINT=... CMD="..."   # run it locally, MODE=local
+make local-logs                # follow what it is doing
 make stop
 
+make validate                  # cicd.yaml + this target's deployment.yaml
 make deploy-cicd               # create the pipeline stack, wire the git remote
 make push <branch>             # push <branch> to CodeCommit main, start it
 make pipeline                  # stage states, and when each last changed
+make pipeline-errors           # why the last run failed, if it did
 make url                       # where it ended up
 
 make delete-stack              # the service stack only

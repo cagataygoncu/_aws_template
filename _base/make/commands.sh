@@ -560,6 +560,102 @@ pipeline() {
 # Stop the pipeline execution that is currently in progress.
 #
 #   pipeline-stop
+# Why the last pipeline run failed. `pipeline` says which stage; this says
+# what, and where the detail lives - which differs by action, so it keys off
+# the action's provider rather than the stage's name. A pipeline with renamed
+# or extra stages reports just the same.
+#
+#   pipeline-errors
+#
+pipeline_errors() {
+    local pipeline_name execution
+    pipeline_name="${CICD_STACK_NAME}-CodePipeline"
+
+    # No --max-items: with --output text the CLI appends its pagination marker,
+    # so a scalar query comes back as the value AND a "None" line. The API
+    # already returns newest first, so [0] is the last execution.
+    # || true, because set -e would otherwise kill the script on a failing aws
+    # call and the message below - the one that says what is actually wrong -
+    # would never print.
+    execution=$(aws codepipeline list-pipeline-executions \
+        --pipeline-name "$pipeline_name" \
+        --query 'pipelineExecutionSummaries[0].pipelineExecutionId' \
+        --output text 2>/dev/null || true)
+    [[ -n "$execution" && "$execution" != None ]] \
+        || die "ERROR: no pipeline ${pipeline_name}, or it has never run - make deploy-cicd first"
+
+    local failures
+    failures=$(aws codepipeline list-action-executions \
+        --pipeline-name "$pipeline_name" \
+        --filter "pipelineExecutionId=${execution}" \
+        --query "actionExecutionDetails[?status=='Failed'].[stageName,actionName,input.actionTypeId.provider,lastUpdateTime,output.executionResult.externalExecutionSummary,output.executionResult.externalExecutionUrl]" \
+        --output text 2>/dev/null || true)
+
+    if [[ -z "$failures" ]]; then
+        echo "no failed actions in the last execution (${execution})"
+        return 0
+    fi
+
+    echo "execution ${execution}"
+
+    echo "$failures" | while IFS=$'\t' read -r stage action provider when summary url; do
+        echo ""
+        echo "${stage}/${action} (${provider}) failed at ${when%.*}"
+        [[ "$summary" != "None" && -n "$summary" ]] && echo "  ${summary}"
+        [[ "$url" != "None" && -n "$url" ]] && echo "  console: ${url}"
+
+        # Where to look next depends on what the action is, not what the stage
+        # was called.
+        case "$provider" in
+            CloudFormation) pipeline_error_cloudformation ;;
+            CodeBuild)      pipeline_error_codebuild "$stage" ;;
+        esac
+    done
+}
+
+# A failed CloudFormation deploy: the pipeline only reports that CloudFormation
+# refused, and the reason is in the stack's own events.
+pipeline_error_cloudformation() {
+    local state
+    echo ""
+    echo "  stack events:"
+    events "$STACK_NAME" 2>/dev/null | sed 's/^/  /' | head -12
+
+    state=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+        --query 'Stacks[0].StackStatus' --output text 2>/dev/null)
+    [[ -n "$state" && "$state" != None ]] || return 0
+
+    echo ""
+    echo "  ${STACK_NAME} is ${state}"
+
+    # These two cannot be updated at all, only deleted, so every subsequent run
+    # fails identically until the stack is gone. Everything else is either
+    # updatable or transient.
+    case "$state" in
+        ROLLBACK_COMPLETE|REVIEW_IN_PROGRESS)
+            echo "  A stack in this state can only be deleted, never updated, so every"
+            echo "  run will fail the same way until it is:"
+            echo "    make delete-stack     then push again"
+            ;;
+        *_IN_PROGRESS)
+            echo "  Still working - the next run may simply need it to finish."
+            ;;
+    esac
+}
+
+# A failed build or test: the reason is in the build log, not in anything
+# CodePipeline records.
+pipeline_error_codebuild() {
+    local stage=$1 project
+    project=$(aws codepipeline get-pipeline --name "${CICD_STACK_NAME}-CodePipeline" \
+        --query "pipeline.stages[?name=='${stage}'].actions[0].configuration.ProjectName | [0]" \
+        --output text 2>/dev/null)
+    [[ -n "$project" && "$project" != None ]] || return 0
+
+    echo ""
+    echo "  build log:  make logs /aws/codebuild/${project}"
+}
+
 #
 pipeline_stop() {
     local execution
@@ -648,13 +744,51 @@ events() {
 #   logs /ecs/my_service
 #
 logs() {
-    local group="${1:-$(output_value LambdaFunctionLogGroupName 2>/dev/null || true)}"
+    local group="${1:-}"
+    [[ -n "$group" ]] || group=$(service_log_group)
 
-    [[ -n "$group" && "$group" != None ]] \
-        || die "ERROR: no log group output on ${STACK_NAME} - pass one: logs <log-group>"
+    if [[ -z "$group" || "$group" == None ]]; then
+        local candidates
+        candidates=$(aws logs describe-log-groups \
+            --query "logGroups[?contains(logGroupName, '${STACK_NAME}')].logGroupName" \
+            --output text 2>/dev/null | tr '\t' '\n' | grep . || true)
+
+        if [[ -n "$candidates" ]]; then
+            die "ERROR: cannot work out which log group ${STACK_NAME} writes to. Pass one:
+$(echo "$candidates" | sed 's/^/    make logs /')"
+        fi
+        die "ERROR: no log group for ${STACK_NAME} - nothing is deployed yet, or it has never run.
+  make pipeline    to see whether it deployed
+  make logs <log-group>    to tail one by name"
+    fi
 
     echo "tailing ${group} - ctrl-c to stop"
     aws logs tail "$group" --follow --format short
+}
+
+# The log group the DEPLOYED application writes to - not the pipeline's, not
+# the build's, and not the task monitor's, all of which are named after the
+# project too and would otherwise match.
+#
+# Lambda publishes its group as a stack output. ECS does not, so it comes from
+# the task definition the service actually runs, which is where the answer
+# genuinely lives rather than a name this script guessed.
+service_log_group() {
+    local group
+    group=$(output_value LambdaFunctionLogGroupName 2>/dev/null || true)
+    if [[ -n "$group" && "$group" != None ]]; then
+        echo "$group"
+        return 0
+    fi
+
+    local service_name family
+    service_name=$(template_default "$(parameter_value "$TARGET" DeploymentCfnFilename)" ServiceName)
+    [[ -n "$service_name" ]] || return 0
+
+    family="${STACK_NAME}-${service_name}-TaskDefinition"
+    aws ecs describe-task-definition --task-definition "$family" \
+        --query 'taskDefinition.containerDefinitions[0].logConfiguration.options."awslogs-group"' \
+        --output text 2>/dev/null | grep -v '^None$' || true
 }
 
 # ---------------------------------------------------------------------------
@@ -1393,6 +1527,8 @@ pipeline
                                               which starts the pipeline
   pipeline                                    stage states, with the time each
                                               last changed
+  pipeline-errors                             why the last run failed, and
+                                              where the detail lives
   pipeline-stop                               abandon the running execution
 
 deployment
@@ -1448,6 +1584,7 @@ case "$command" in
     upload)         upload       "$@" ;;
     push)           push         "$@" ;;
     pipeline)       pipeline          ;;
+    pipeline-errors) pipeline_errors  ;;
     pipeline-stop)  pipeline_stop     ;;
     outputs)        outputs      "$@" ;;
     output-value)   output_value "$@" ;;
