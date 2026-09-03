@@ -98,6 +98,14 @@ case "$language" in
         container_cmd_task="'src/main_task.py'"
         container_entrypoint_server="uvicorn"
         container_cmd_server="!Sub 'src.main_server:app --host 0.0.0.0 --port \${ContainerPort}'"
+        # Shell-ready twins of the container_* values above, for the README's
+        # `make run` examples: those carry CloudFormation quoting, and python's
+        # server value is a !Sub expression, so neither can be pasted.
+        run_entrypoint_task="python"
+        run_cmd_task="src/main_task.py"
+        run_entrypoint_server="uvicorn"
+        run_cmd_server="src.main_server:app --host 0.0.0.0 --port ${container_port}"
+        run_cmd_lambda="src.main_lambda.lambda_handler_1"
         ;;
     golang)
         # 1.26 is the floor: aws-lambda-go v1.55 and gopls both require it.
@@ -117,6 +125,14 @@ case "$language" in
         container_cmd_task="'/app/build/task'"
         container_entrypoint_server="/usr/bin/env"
         container_cmd_server="'/app/build/server'"
+        # Shell-ready twins of the container_* values above, for the README's
+        # `make run` examples: those carry CloudFormation quoting, and python's
+        # server value is a !Sub expression, so neither can be pasted.
+        run_entrypoint_task="/usr/bin/env"
+        run_cmd_task="/app/build/task"
+        run_entrypoint_server="/usr/bin/env"
+        run_cmd_server="/app/build/server"
+        run_cmd_lambda="bootstrap"
         ;;
     cpp)
         # No single toolchain version: the images are named by distro release.
@@ -130,6 +146,14 @@ case "$language" in
         container_cmd_task="'/app/build/main'"
         container_entrypoint_server="/usr/bin/env"
         container_cmd_server="'/app/build/main'"
+        # Shell-ready twins of the container_* values above, for the README's
+        # `make run` examples: those carry CloudFormation quoting, and python's
+        # server value is a !Sub expression, so neither can be pasted.
+        run_entrypoint_task="/usr/bin/env"
+        run_cmd_task="/app/build/main"
+        run_entrypoint_server="/usr/bin/env"
+        run_cmd_server="/app/build/main"
+        run_cmd_lambda="bootstrap"
         ;;
     nextjs)
         language_version="${LANGUAGE_VERSION:-20}"
@@ -142,6 +166,14 @@ case "$language" in
         container_cmd_task="'server.mjs'"
         container_entrypoint_server="node"
         container_cmd_server="'server.mjs'"
+        # Shell-ready twins of the container_* values above, for the README's
+        # `make run` examples: those carry CloudFormation quoting, and python's
+        # server value is a !Sub expression, so neither can be pasted.
+        run_entrypoint_task="node"
+        run_cmd_task="server.mjs"
+        run_entrypoint_server="node"
+        run_cmd_server="server.mjs"
+        run_cmd_lambda="src/lambda.handler"
         ;;
     elixir)
         language_version="${LANGUAGE_VERSION:-1.19}"
@@ -152,10 +184,18 @@ case "$language" in
         container_cmd_lambda="bootstrap"
         container_port="4000"
         container_workdir="/app"
-        container_entrypoint_task="/app/bin/example"
+        container_entrypoint_task="/app/bin/${project_name}"
         container_cmd_task="'start'"
-        container_entrypoint_server="/app/bin/example"
+        container_entrypoint_server="/app/bin/${project_name}"
         container_cmd_server="'start'"
+        # Shell-ready twins of the container_* values above, for the README's
+        # `make run` examples: those carry CloudFormation quoting, and python's
+        # server value is a !Sub expression, so neither can be pasted.
+        run_entrypoint_task="/app/bin/${project_name}"
+        run_cmd_task="start"
+        run_entrypoint_server="/app/bin/${project_name}"
+        run_cmd_server="start"
+        run_cmd_lambda="bootstrap"
         ;;
 esac
 
@@ -232,12 +272,17 @@ substitute_in_file() {
         -e "s|{{CONTAINER_CMD_TASK}}|$container_cmd_task|g" \
         -e "s|{{CONTAINER_ENTRYPOINT_SERVER}}|$container_entrypoint_server|g" \
         -e "s|{{CONTAINER_CMD_SERVER}}|$container_cmd_server|g" \
+        -e "s|{{RUN_ENTRYPOINT_TASK}}|$run_entrypoint_task|g" \
+        -e "s|{{RUN_CMD_TASK}}|$run_cmd_task|g" \
+        -e "s|{{RUN_ENTRYPOINT_SERVER}}|$run_entrypoint_server|g" \
+        -e "s|{{RUN_CMD_SERVER}}|$run_cmd_server|g" \
+        -e "s|{{RUN_CMD_LAMBDA}}|$run_cmd_lambda|g" \
         "$file" > "$tmp" && mv "$tmp" "$file"
 }
 
 echo ">>> Substituting placeholders (project name, language, images, entrypoints)"
 while IFS= read -r -d '' file; do
-    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|LANGUAGE_VERSION|OTP_VERSION|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+)\}\}' "$file" 2>/dev/null; then
+    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|LANGUAGE_VERSION|OTP_VERSION|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+)\}\}' "$file" 2>/dev/null; then
         substitute_in_file "$file"
     fi
 done < <(find "$destination_dir" -type f \

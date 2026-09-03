@@ -36,8 +36,8 @@ A *target* is the path under `targets/` holding a `cicd_parameters.json`:
 `lambda`, `service/task` (no load balancer) or `service/server` (behind an ALB,
 with a domain). `make targets` lists the ones this project still has.
 
-`TARGET` at the top of the `Makefile` selects the one this project deploys;
-pass one positionally to override for a single run:
+`TARGET` in `project.env` selects the one this project deploys; pass one
+positionally to override for a single run:
 
 ```zsh
 make build                     # uses $(TARGET)
@@ -50,16 +50,30 @@ local `make build` and the pipeline's build cannot drift apart.
 
 ## Nothing is guessed
 
-`PROJECT_NAME`, `TARGET` and `CONTAINER_PORT` have no fallback inside
-`commands.sh`. They select *which* stack, *which* target and *which* port
-everything else acts on, so they are declared in the `Makefile` where you can
-see them, and running `commands.sh` without them fails rather than guessing.
+`PROJECT_NAME`, `TARGET`, `CONTAINER_PORT`, `AWS_PROFILE` and `AWS_REGION` are
+declared in **`project.env`**, and nowhere else:
+
+```
+PROJECT_NAME=my-service
+TARGET=service/task
+AWS_PROFILE=gig-nonprod
+AWS_REGION=ap-southeast-2
+CONTAINER_PORT=5040
+```
+
+Both the `Makefile` and `make/commands.sh` read that one file, so
+`./make/commands.sh <command>` behaves exactly like `make <command>`, and
+neither can guess. A missing `project.env` is an error, not a fallback.
+
+(Not to be confused with `container_config.env`, which is the environment the
+*running container* gets. `project.env` never leaves your machine and the
+pipeline never sees it.)
 
 That matters more than it sounds: `PROJECT_NAME` used to default to the
 directory basename, so a repo whose folder was named after an older deployment
 would silently target that deployment's stack.
 
-Override any of them for one invocation:
+An override on the command line still wins, for a one-off:
 
 ```zsh
 make deploy-cicd PROJECT_NAME=lambda-test-1
@@ -228,20 +242,119 @@ make deploy-cicd lambda PROJECT_NAME=lambda-test-1
 
 ### Deploying one repository as two stacks
 
-`PROJECT_NAME` is the separation, not the branch. It derives both stack names
-and, through them, the artifact bucket, ECR repository, CodeCommit repository,
-pipeline, CodeBuild project and IAM roles. `cicd.yaml` deploys with
-`StackName: !Ref ProjectName`, so **a second pipeline that kept the same
-`PROJECT_NAME` would deploy into the first one's stack.**
+A rewrite, a new season, a v2 alongside the running service: one repository,
+two independent deployments.
 
-Two things do not separate on their own, because the pipeline passes only
-`ImageName` and `ProjectName` to the deployment: `DomainName` (two stacks
-cannot own one Route 53 record) and `ServiceName` (unique per ECS cluster).
-Set both in the target's `deployment.yaml`.
+**`PROJECT_NAME` is the separation, not the branch.** Branches decide *which
+code* a pipeline builds; `PROJECT_NAME` decides *which AWS resources exist*.
 
-Branches then choose which code each pipeline builds: `make push <branch>`
-pushes to the remote named after that project's stack, so one repository can
-feed two pipelines from two branches.
+#### The trap
+
+`cicd.yaml`'s deploy action is:
+
+```yaml
+StackName: !Ref ProjectName
+```
+
+So a second pipeline stack that kept the same `PROJECT_NAME` would deploy
+**into the first one's service stack** — different pipeline, same target,
+production overwritten. Renaming only the stacks is not enough. Change
+`PROJECT_NAME` and everything below separates on its own:
+
+| Resource | For `PROJECT_NAME=my-service-v2` |
+|---|---|
+| CloudFormation stacks | `my-service-v2`, `my-service-v2-cicd` |
+| S3 artifact bucket | `my-service-v2-cicd-artifact-store` |
+| ECR repository | `my-service-v2-cicd-ecr-repository` |
+| CodeCommit repository | `my-service-v2-cicd-CodeCommitRepository` |
+| CodePipeline / CodeBuild | `my-service-v2-cicd-CodePipeline`, `-CodeBuildProject` |
+| IAM roles | `my-service-v2-cicd-{CfnRole,CodeBuildRole,CodePipelineRole}` |
+| Pipeline log group | `/aws/codepipeline/my-service-v2` |
+| ECS service / task role | `my-service-v2-server`, `my-service-v2-TaskRole` |
+| Environment file | `s3://gig-config/my-service-v2/container_config.env` |
+| git remote (local) | `my-service-v2` |
+
+#### What does not separate on its own
+
+The pipeline passes only `ImageName` and `ProjectName` to the deployment
+stack, so anything else has to be set in the target's `deployment.yaml`:
+
+- **`DomainName`** — two stacks cannot create the same Route 53 record. Give
+  the second one its own subdomain. It has no default for this reason:
+  CloudFormation refuses the deploy until you set it.
+- **`HostedZoneId`** — likewise, and likewise no default.
+- **The environment file** — the path follows `ProjectName`, so the object at
+  the *new* path does not exist yet. `make config-upload` puts it there;
+  `make deploy-cicd` refuses to run until it is.
+
+`ServiceName` needs no change: every resource built from it is prefixed with
+`ProjectName`, so `my-service-v2-server` cannot collide with `my-service-server`.
+
+#### Worked example
+
+Working on a `modernise` branch, deploying beside a live `my-service`:
+
+```zsh
+git checkout -b modernise
+
+# 1. Name the second deployment, in project.env. Nothing infers it: the
+#    directory is still named after the ORIGINAL project, and a fallback to
+#    the basename would deploy into the live stack.
+#      PROJECT_NAME=my-service-v2
+
+# 2. In targets/<target>/deployment.yaml, set what does not separate:
+#      DomainName:   'my-service-v2.example.com'
+#      HostedZoneId: 'Z0123456789ABCDEFGHIJ'
+
+make info                      # read every name before creating anything
+make validate                  # templates, and what still has no default
+make config-upload             # the environment file, at the NEW path
+
+make deploy-cicd               # creates my-service-v2-cicd, adds the git remote
+make push modernise            # to the new remote only - see below
+make pipeline
+```
+
+#### Two remotes, one repository
+
+`make deploy-cicd` adds a git remote **named after the stack**, so the
+repository ends up with one per deployment:
+
+```
+origin          git@github.com:org/my-service.git
+my-service      ssh://.../my-service-cicd-CodeCommitRepository        (the live one)
+my-service-v2   ssh://.../my-service-v2-cicd-CodeCommitRepository     (the new one)
+```
+
+`make push <branch>` pushes to the remote named after **this** project's stack,
+so it reaches only that pipeline. Each pipeline watches `main` in its own
+CodeCommit repository and never sees the other's pushes. The branch name is
+local: `make push modernise` lands as `main` on the far side, which is what the
+pipeline triggers on.
+
+The corollary is worth stating: `git push aws main` or pushing to the *old*
+remote by hand deploys the new code to the *old* stack. The explicit branch
+argument exists partly for this.
+
+#### Confirm you have not touched the original
+
+After the second deployment, the first stack's `LastUpdatedTime` should be
+unchanged and its service still at whatever count it was:
+
+```zsh
+aws cloudformation describe-stacks --stack-name my-service \
+    --query 'Stacks[0].[StackStatus,LastUpdatedTime]' --output text
+aws ecs describe-services --cluster <cluster> --services my-service-server \
+    --query 'services[0].[desiredCount,runningCount]' --output text
+```
+
+#### Cutting over, later
+
+Both stacks run side by side until you choose. Cutover is a DNS change —
+point the original domain at the new load balancer — followed by
+`make delete-all PROJECT_NAME=my-service` once the new one has proven itself.
+Deleting the old stack releases its domain, so if the new one is to take that
+name, delete first and then deploy with it.
 
 ## Inspect
 
@@ -261,53 +374,69 @@ both read from the target's `cicd_parameters.json`. `~/.aws` is mounted
 read-only and `AWS_PROFILE` passed through, so no credentials end up in the
 container's environment.
 
-`ENTRYPOINT` and `CMD` are whatever that target's image runs. The authoritative
-values are `ContainerEntryPoint` and `ContainerCmd` in the target's
-`deployment.yaml` — read them there rather than guessing, since they differ by
-language and by target:
+`ENTRYPOINT` and `CMD` are whatever that target's image runs — for this project:
 
 ```zsh
-grep -n "ContainerEntryPoint\|ContainerCmd" targets/service/task/deployment.yaml
-```
-
-They are written for CloudFormation, so drop the surrounding quotes when
-passing them to `make run`. A compiled binary looks like
-`ENTRYPOINT=/usr/bin/env CMD="/app/build/task"`; an interpreted one names the
-interpreter, `ENTRYPOINT=python CMD="src/main_task.py"`.
-
-```zsh
-# lambda: keep the image entrypoint, pass the handler as the command
-make run ENTRYPOINT= CMD="<the handler>" TARGET=lambda
-make invoke JSON='{"test": 1}'
-
 # task
-make run ENTRYPOINT=<entrypoint> CMD="<command>" TARGET=service/task
+make run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task
 
 # server - the app binds {{CONTAINER_PORT}}; make run publishes it on 8080
-make run ENTRYPOINT=<entrypoint> CMD="<command>" TARGET=service/server
+make run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" TARGET=service/server
 open http://localhost:8080
+
+# lambda - the image entrypoint is kept on purpose, so the handler is the command
+make run ENTRYPOINT= CMD="{{RUN_CMD_LAMBDA}}" TARGET=lambda
+make invoke JSON='{"test": 1}'
+
+# anything the code reads itself goes in RUN_ENV, which REPLACES the default
+# MODE=local - so keep MODE= in whatever you pass
+make run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task \
+    RUN_ENV="MODE=local SECRET_NAME=my-settings DEBUG=1"
+
+# the online path, against the real services it needs
+make run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task \
+    RUN_ENV="MODE=online SECRET_NAME=my-settings"
 
 make local-logs
 make shell
 make stop
 ```
 
-The container gets only the AWS variables by default. Anything the code reads
-itself — a secret name, a feature flag — goes in `RUN_ENV`:
+`make run` with neither is refused rather than guessed: the image's own default
+would run, and for a python image that is a bare `python3` which reads EOF,
+exits 0 and logs nothing — a broken run that looks like a successful one.
 
-```zsh
-make run ENTRYPOINT= CMD="<the handler>" TARGET=lambda \
-    RUN_ENV="REDIS_SECRET_NAME=my-settings DEBUG=1"
-```
+The authoritative values are `ContainerEntryPoint` and `ContainerCmd` in the
+target's `deployment.yaml`. Those carry CloudFormation quoting, so drop the
+surrounding quotes when passing them here. For reference, across the language
+layers:
 
-It is a space-separated `KEY=VALUE` list; a value containing spaces needs
-`docker run` by hand.
+| Language | task / server entrypoint | task command | server command | lambda command |
+|---|---|---|---|---|
+| python | `python` / `uvicorn` | `src/main_task.py` | `src.main_server:app --host 0.0.0.0 --port <port>` | `src.main_lambda.lambda_handler_1` |
+| golang | `/usr/bin/env` | `/app/build/task` | `/app/build/server` | `bootstrap` |
+| cpp | `/usr/bin/env` | `/app/build/main` | `/app/build/main` | `bootstrap` |
+| nextjs | `node` | `server.mjs` | `server.mjs` | `src/lambda.handler` |
+| elixir | `/app/bin/<release>` | `start` | `start` | `bootstrap` |
+
+Go and C++ go through `/usr/bin/env` because the ECS module splits the command
+into the container's `Command` and cannot take an empty one; `env` execs the
+binary, which keeps it PID 1.
+
+The container gets only the AWS variables by default — `AWS_PROFILE`,
+`AWS_REGION` and a read-only mount of `~/.aws`, so no credentials end up in its
+environment. Everything the code reads itself goes in `RUN_ENV`, a
+space-separated `KEY=VALUE` list. A value containing spaces needs `docker run`
+by hand.
+
+`make info` prints the `RUN_ENV` a bare `make run` would use, so what the
+container gets is visible without reading the Makefile.
 
 `RUN_ENV` defaults to `MODE=local` in the Makefile, which is what makes a local
 run work with no AWS-backed services: the code reads `MODE` and defaults to
 `online`, so deployed code sets nothing and runs online while `make run` opts
 out. To exercise the online path locally, pass what it needs —
-`RUN_ENV="MODE=online REDIS_SECRET_NAME=my-settings"`.
+`RUN_ENV="MODE=online SECRET_NAME=my-settings"`.
 
 `make build` builds for the platform the pipeline builds for, not the one your
 laptop runs. It reads `CodeBuildImage` from the target's

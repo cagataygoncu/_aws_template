@@ -81,7 +81,7 @@ func GetCache(ctx context.Context, mode Mode) (database.Cache, error) {
 	var redisConfig database.RedisConfig
 	err := security.GetSecretAsStruct(
 		ctx,
-		os.Getenv("REDIS_SECRET_NAME"),
+		os.Getenv("SECRET_NAME"),
 		os.Getenv("AWS_REGION"),
 		&redisConfig,
 	)

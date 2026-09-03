@@ -31,7 +31,7 @@ def process_request(event_data, mode=None):
     mode = mode or get_mode()
 
     if mode == Mode.ONLINE:
-        secret_name = os.getenv("REDIS_SECRET_NAME")
+        secret_name = os.getenv("SECRET_NAME")
         redis_config = get_secret_value(secret_name)
         redis_config_json = json.loads(redis_config)
         cache = get_cache(redis_config_json, reader_only=False)

@@ -1,5 +1,5 @@
 {
-    // app: :example in mix.exs - rename these tasks with it.
+    // The release name is app: in mix.exs, substituted at bootstrap.
     "version": "0.2.0",
     "configurations": [
         {

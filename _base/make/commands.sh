@@ -39,12 +39,28 @@ die_early() {
     exit 1
 }
 
+# The same file the Makefile includes, so `make <command>` and
+# `./make/commands.sh <command>` cannot disagree about which project they are
+# acting on. Anything already in the environment wins, which is what makes
+# `PROJECT_NAME=other make deploy-cicd` work.
+PROJECT_CONFIG="${PROJECT_CONFIG:-project.env}"
+if [[ -f "$PROJECT_CONFIG" ]]; then
+    # ${!key} and printf -v, not zsh's ${(P)key} and typeset -g: this script
+    # runs under bash, and macOS ships bash 3.2, which has neither declare -g
+    # nor associative arrays.
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
+        key="${key// /}"
+        case "$key" in ''|\#*) continue ;; esac
+        [[ -n "${!key:-}" ]] || printf -v "$key" '%s' "$value"
+    done < "$PROJECT_CONFIG"
+fi
+
 PROJECT_NAME="${PROJECT_NAME:-}"
 TARGET="${TARGET:-}"
 [[ -n "$PROJECT_NAME" ]] \
-    || die_early "ERROR: PROJECT_NAME is not set. Run through the Makefile, or: PROJECT_NAME=<name> ./make/commands.sh ..."
+    || die_early "ERROR: PROJECT_NAME is not set. Declare it in ${PROJECT_CONFIG}, or: PROJECT_NAME=<name> ./make/commands.sh ..."
 [[ -n "$TARGET" ]] \
-    || die_early "ERROR: TARGET is not set (lambda, service/task, service/server). Run through the Makefile, or: TARGET=<target> ./make/commands.sh ..."
+    || die_early "ERROR: TARGET is not set (lambda, service/task, service/server). Declare it in ${PROJECT_CONFIG}, or: TARGET=<target> ./make/commands.sh ..."
 
 # CloudFormation stack names, and so the ProjectName parameter the pipeline
 # names its stack after, allow no underscores - but project directories here
@@ -1178,7 +1194,7 @@ build() {
 # Application environment variables come from RUN_ENV, since the container
 # gets only the AWS ones by default:
 #
-#   RUN_ENV="REDIS_SECRET_NAME=my-settings DEBUG=1" run "" src.main_lambda.lambda_handler_1 lambda
+#   RUN_ENV="SECRET_NAME=my-settings DEBUG=1" run "" src.main_lambda.lambda_handler_1 lambda
 #
 run() {
     local entrypoint=$1 cmd=$2 target="${3:-$TARGET}"
@@ -1193,8 +1209,24 @@ run() {
 
     docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1 || true
 
+    # Neither given means the image's own ENTRYPOINT/CMD runs - a value nobody
+    # chose. For the python service image that is a bare `python3`, which reads
+    # EOF, exits 0 and logs nothing, so the run looks like it did something.
+    if [[ -z "$entrypoint" && -z "$cmd" ]]; then
+        local image_entrypoint image_cmd
+        image_entrypoint=$(docker inspect --format '{{json .Config.Entrypoint}}' "${STACK_NAME}:latest" 2>/dev/null)
+        image_cmd=$(docker inspect --format '{{json .Config.Cmd}}' "${STACK_NAME}:latest" 2>/dev/null)
+        die "ERROR: no ENTRYPOINT and no CMD - the image would run its own default (entrypoint ${image_entrypoint:-?}, cmd ${image_cmd:-?}).
+  What this target runs is ContainerEntryPoint and ContainerCmd in $(parameter_value "$target" DeploymentCfnFilename); drop the CloudFormation quotes:
+    make run ENTRYPOINT=python CMD=\"src/main_task.py\"
+  For lambda the image entrypoint is kept on purpose, so pass the handler as the command:
+    make run ENTRYPOINT= CMD=\"src.main_lambda.lambda_handler_1\" TARGET=lambda"
+    fi
+
     local entrypoint_args=()
     [[ -n "$entrypoint" ]] && entrypoint_args=(--entrypoint "$entrypoint")
+
+    echo "running: ${entrypoint:-<image entrypoint>} ${cmd}"
 
     # RUN_ENV is a space-separated KEY=VALUE list, deliberately word-split.
     # A value containing spaces needs docker run by hand.
@@ -1228,13 +1260,33 @@ run() {
             # Published either way; only a process that serves HTTP answers it.
             echo "port:   localhost:${port} -> container ${target_port}, if the process serves HTTP"
         fi
-    else
-        local status
-        status=$(docker inspect --format '{{.State.ExitCode}}' "$CONTAINER_NAME" 2>/dev/null)
-        echo "${CONTAINER_NAME} exited (${status}) - nothing is listening on ${port}"
+        echo "logs:   make local-logs"
+        echo "stop:   make stop"
+        return 0
     fi
-    echo "logs:   make local-logs"
-    echo "stop:   make stop"
+
+    # It died. The reason is in the container's log and nowhere else, so print
+    # it rather than asking for another command - an image that fails on import
+    # or on a missing environment variable is the common case, and "exited (1)"
+    # on its own says nothing.
+    local status output
+    status=$(docker inspect --format '{{.State.ExitCode}}' "$CONTAINER_NAME" 2>/dev/null)
+    echo "${CONTAINER_NAME} exited (${status:-unknown}) - nothing is listening on ${port}"
+    echo ""
+
+    output=$(docker logs --tail 40 "$CONTAINER_NAME" 2>&1)
+    if [[ -n "$output" ]]; then
+        echo "$output" | sed 's/^/    /'
+    else
+        echo "    (no output - the process wrote nothing before exiting)"
+    fi
+    echo ""
+    echo "full log: make local-logs        (the container is left in place)"
+
+    # A task that ran to completion exits 0; only a non-zero status is a
+    # failure to report as one.
+    [[ "$status" == "0" ]] && return 0
+    return 1
 }
 
 # POST a JSON payload to the local lambda runtime emulator.

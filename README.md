@@ -631,7 +631,7 @@ itself — a secret name, a feature flag — goes in `RUN_ENV`:
 
 ```bash
 make run ENTRYPOINT= CMD="src.main_lambda.lambda_handler_1" TARGET=lambda \
-    RUN_ENV="REDIS_SECRET_NAME=my-settings DEBUG=1"
+    RUN_ENV="SECRET_NAME=my-settings DEBUG=1"
 ```
 
 It is a space-separated `KEY=VALUE` list; a value containing spaces needs

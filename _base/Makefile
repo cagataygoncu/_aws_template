@@ -53,13 +53,19 @@
 #   make deploy-cicd lambda PROJECT_NAME=lambda-test-1
 #   make outputs AWS_PROFILE=gig-prod
 
-PROJECT_NAME ?= $(notdir $(CURDIR))
-TARGET       ?= service/task
-AWS_PROFILE  ?= gig-nonprod
-AWS_REGION   ?= ap-southeast-2
-# The port the app listens on inside the container - what `make run` publishes
-# to, and what ContainerPort defaults to in the deployment template.
-CONTAINER_PORT ?= {{CONTAINER_PORT}}
+# PROJECT_NAME, TARGET, AWS_PROFILE and AWS_REGION come from project.env, not
+# from here: a value inferred by a script is one you cannot see, and
+# PROJECT_NAME inferred from the directory name silently targets whatever stack
+# the folder happens to be called after. commands.sh reads the same file, so a
+# direct ./make/commands.sh behaves identically.
+#
+# Override one for a single run in the usual way, which still wins:
+#   make deploy-cicd PROJECT_NAME=lambda-test-1
+PROJECT_CONFIG ?= project.env
+ifeq ($(wildcard $(PROJECT_CONFIG)),)
+$(error $(PROJECT_CONFIG) not found - it declares PROJECT_NAME, TARGET, AWS_PROFILE and AWS_REGION)
+endif
+include $(PROJECT_CONFIG)
 export PROJECT_NAME
 export TARGET
 export AWS_PROFILE

@@ -66,8 +66,8 @@ ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 WORKDIR /app
 
 # Update the release name to match the `app:` key in mix.exs.
-COPY --from=builder /app/_build/prod/rel/example /app
+COPY --from=builder /app/_build/prod/rel/{{PROJECT_NAME}} /app
 
 EXPOSE 4000
 
-CMD ["/app/bin/example", "start"]
+CMD ["/app/bin/{{PROJECT_NAME}}", "start"]
