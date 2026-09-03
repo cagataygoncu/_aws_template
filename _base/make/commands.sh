@@ -164,9 +164,17 @@ require_command() {
 #
 #   confirm "delete stack ${stack}"
 #
+# Set to true by delete_all, which lists both stacks and asks once. Nothing
+# reads it from the environment on purpose: a prompt this skips is a stack
+# deleted, so the only way to skip it is a command that has already asked.
+CONFIRMED=false
+
 confirm() {
     local message=$1
     local reply
+
+    [[ "$CONFIRMED" == true ]] && return 0
+
     read -r -p "${message} in ${AWS_PROFILE}? (y/n) " reply
     [[ $reply == [Yy] ]] || die "aborted"
 }
@@ -998,6 +1006,33 @@ empty_ecr_repository() {
 #   delete-all
 #
 delete_all() {
+    local present=()
+
+    if stack_exists "$STACK_NAME"; then
+        present+=("$STACK_NAME")
+    fi
+    if stack_exists "$CICD_STACK_NAME"; then
+        present+=("$CICD_STACK_NAME")
+    fi
+
+    if [[ ${#present[@]} -eq 0 ]]; then
+        echo "no stacks found: ${STACK_NAME}, ${CICD_STACK_NAME}"
+        return 0
+    fi
+
+    # Both stacks named before a single prompt, rather than one prompt each
+    # part way through the teardown - by the time the second was asked the
+    # first was already gone, so it was not a question that could be answered
+    # no.
+    echo "stacks to delete:"
+    printf '  %s\n' "${present[@]}"
+    if [[ ${#present[@]} -eq 1 ]]; then
+        confirm "delete it"
+    else
+        confirm "delete both"
+    fi
+
+    CONFIRMED=true
     delete_stack
     delete_cicd
 }
@@ -1815,7 +1850,8 @@ deployment
 teardown
   delete-stack                                the service stack
   delete-cicd                                 the pipeline stack, emptied first
-  delete-all                                  both, service first
+  delete-all                                  both, service first; lists them
+                                              and asks once
 
 local docker
   build          [target]
