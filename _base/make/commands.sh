@@ -351,6 +351,18 @@ validate() {
         if [[ -n "${missing// /}" ]]; then
             echo "    set before deploying, no default: ${missing% }"
         fi
+
+        # Pinning an old release is legitimate, so this reports rather than
+        # fails - but silently sitting twelve releases back is not a decision
+        # anyone made.
+        local pinned latest
+        pinned=$(nested_version "$template")
+        if [[ -n "$pinned" ]]; then
+            latest=$(latest_template_version)
+            if [[ -n "$latest" && "$pinned" != "$latest" ]]; then
+                echo "    TemplateVersion ${pinned}, latest published ${latest} - make template-version ${latest}"
+            fi
+        fi
     done
 }
 
@@ -950,6 +962,22 @@ config_upload() {
     echo "  it deploys with the template - commit and push it"
 }
 
+# The newest release in the template bucket. Empty if the bucket cannot be
+# listed - being offline must not stop a validate.
+#
+# Sorted numerically field by field rather than with sort -V, which BSD sort
+# does not reliably have: v1.10.14 must beat v1.10.2, and a lexical sort puts
+# them the other way round.
+latest_template_version() {
+    aws s3 ls "s3://${TEMPLATE_BUCKET}/" 2>/dev/null \
+        | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' \
+        | sort -u \
+        | sed 's/^v//' \
+        | sort -t. -k1,1n -k2,2n -k3,3n \
+        | tail -1 \
+        | sed 's/^/v/'
+}
+
 # Show, or set, the gig-cfn-templates release the nested stacks are pulled
 # from - the TemplateVersion parameter of each deployment template, which is
 # the only place it lives.
@@ -967,10 +995,19 @@ template_version() {
     local file current
 
     if [[ -z "$version" ]]; then
+        local latest
+        latest=$(latest_template_version)
+
         for file in $(deployment_files); do
             current=$(nested_version "$file")
-            printf '  %-42s %s\n' "$file" "${current:-none}"
+            if [[ -n "$latest" && -n "$current" && "$current" != "$latest" ]]; then
+                printf '  %-42s %-10s behind %s\n' "$file" "${current}" "$latest"
+            else
+                printf '  %-42s %s\n' "$file" "${current:-none}"
+            fi
         done
+
+        [[ -n "$latest" ]] && echo "  latest published: ${latest}"
         return 0
     fi
 
