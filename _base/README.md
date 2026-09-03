@@ -100,16 +100,21 @@ local `make build` and the pipeline's build cannot drift apart.
 
 ## Nothing is guessed
 
-`PROJECT_NAME`, `TARGET`, `CONTAINER_PORT`, `AWS_PROFILE` and `AWS_REGION` are
-declared in **`project.env`**, and nowhere else:
+`PROJECT_NAME`, `TARGET`, `AWS_PROFILE` and `AWS_REGION` are declared in
+**`project.env`**, and nowhere else:
 
 ```
 PROJECT_NAME=my-service
 TARGET=service/task
 AWS_PROFILE=gig-nonprod
 AWS_REGION=ap-southeast-2
-CONTAINER_PORT=5040
+CONFIG_FILE_NAME=container_config.env
 ```
+
+Everything the *deployment* takes lives in the target's
+`deployment_parameters.json` instead — including `ContainerPort`, so the port
+`make run` publishes to and the port the deployment sends are the same value,
+read from the same place.
 
 Both the `Makefile` and `make/commands.sh` read that one file, so
 `./make/commands.sh <command>` behaves exactly like `make <command>`, and

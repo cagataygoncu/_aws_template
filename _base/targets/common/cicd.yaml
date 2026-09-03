@@ -13,35 +13,39 @@ Parameters:
   DockerFilename:
     Type: String
 
+  # Parameters for the DEPLOYMENT stack, as a CodePipeline template
+  # configuration. Everything in it is sent on every deploy, so a value cannot
+  # go stale in the stack the way an unlisted parameter does - CloudFormation
+  # keeps the previous value for anything it is not given.
+  #
+  # The buildspec merges ImageName into it, since only the build knows that,
+  # and writes the result into the build artifact.
+  DeploymentParametersFilename:
+    Type: String
+
   BuildSpecFilename:
     Type: String
-    Default: "targets/common/buildspec.yaml"
 
   TestBuildSpecFilename:
     Type: String
-    Default: "targets/common/buildspec_test.yaml"
 
   BaseImageURI:
     Type: String
 
   CodeBuildImage:
     Type: String
-    Default: "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
 
   RunTests:
     Type: String
-    Default: "false"
     AllowedValues:
       - "true"
       - "false"
 
   TestReportDirectory:
     Type: String
-    Default: "reports"
 
   TestReportFilename:
     Type: String
-    Default: "pytest_reports.xml"
 
 ####################################################################################
 Conditions:
@@ -281,6 +285,9 @@ Resources:
           - Name: DEPLOYMENT_CFN_FILENAME
             Type: PLAINTEXT
             Value: !Sub "${DeploymentCfnFilename}"
+          - Name: DEPLOYMENT_PARAMETERS_FILENAME
+            Type: PLAINTEXT
+            Value: !Sub "${DeploymentParametersFilename}"
           - Name: DOCKER_FILENAME
             Type: PLAINTEXT
             Value: !Sub "${DockerFilename}"
@@ -368,11 +375,12 @@ Resources:
                   Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                   StackName: !Ref ProjectName
                   TemplatePath: !Sub "BuildOutput::${DeploymentCfnFilename}"
-                  ParameterOverrides: !Sub |
-                    {
-                      "ImageName" : { "Fn::GetParam" : ["BuildOutput", "deployment-parameters.json", "ImageName"]},
-                      "ProjectName" : "${ProjectName}"
-                    }
+                  # Every parameter the deployment gets, in one file the
+                  # buildspec assembled: the repo's deployment_parameters.json
+                  # plus ImageName and ProjectName, which only the pipeline
+                  # knows. No inline ParameterOverrides - one place to look,
+                  # and no 1000-character limit on it.
+                  TemplateConfiguration: "BuildOutput::template-configuration.json"
         - - Name: Clone
             Actions:
               - Name: Clone
@@ -421,11 +429,12 @@ Resources:
                   Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                   StackName: !Ref ProjectName
                   TemplatePath: !Sub "BuildOutput::${DeploymentCfnFilename}"
-                  ParameterOverrides: !Sub |
-                    {
-                      "ImageName" : { "Fn::GetParam" : ["BuildOutput", "deployment-parameters.json", "ImageName"]},
-                      "ProjectName" : "${ProjectName}"
-                    }
+                  # Every parameter the deployment gets, in one file the
+                  # buildspec assembled: the repo's deployment_parameters.json
+                  # plus ImageName and ProjectName, which only the pipeline
+                  # knows. No inline ParameterOverrides - one place to look,
+                  # and no 1000-character limit on it.
+                  TemplateConfiguration: "BuildOutput::template-configuration.json"
 
   EventRole:
     Type: AWS::IAM::Role

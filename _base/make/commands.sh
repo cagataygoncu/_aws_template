@@ -113,9 +113,6 @@ LOCAL_PORT_SERVICE=8080
 # stand in, which silently published the wrong port for every project that does
 # not use it. The lambda runtime emulator always listens on 8080, whatever the
 # language, and that one is a fact rather than a choice.
-CONTAINER_PORT="${CONTAINER_PORT:-}"
-[[ -n "$CONTAINER_PORT" ]] \
-    || die_early "ERROR: CONTAINER_PORT is not set. Run through the Makefile, or: CONTAINER_PORT=<port> ./make/commands.sh ..."
 LAMBDA_RUNTIME_PORT=8080
 
 CONTAINER_NAME="${STACK_NAME}-local"
@@ -227,11 +224,19 @@ local_port() {
 # Print the port inside the container that the published port maps to.
 #
 #   container_port lambda          -> 8080  (the runtime emulator)
-#   container_port service/task    -> $CONTAINER_PORT
+#   container_port service/task    -> the target's ContainerPort
 #
 container_port() {
     local target=$1
-    [[ "$target" == lambda ]] && echo "$LAMBDA_RUNTIME_PORT" || echo "$CONTAINER_PORT"
+    # The port comes from the target's own parameters, the same value the
+    # deployment sends as ContainerPort - not from a second copy in
+    # project.env, which could disagree with it. Lambda has no port of its
+    # own: the runtime interface emulator always listens on 8080.
+    if [[ "$target" == lambda ]]; then
+        echo "$LAMBDA_RUNTIME_PORT"
+        return 0
+    fi
+    deployment_value "$target" "$(parameter_value "$target" DeploymentCfnFilename)" ContainerPort
 }
 
 # True when a stack exists in this account and region.
@@ -325,8 +330,11 @@ info() {
     echo "TEMPLATE_BUCKET     ${TEMPLATE_BUCKET}"
     echo "CODECOMMIT_SSH_HOST ${CODECOMMIT_SSH_HOST}"
     echo "AWS_CONFIG_HOST_DIR ${AWS_CONFIG_HOST_DIR}"
-    echo "REMOTE_HOST         ${REMOTE_HOST:-<unset, upload takes it as an argument>}"
-    echo "REMOTE_DIR          ${REMOTE_DIR:-<unset, upload takes it as an argument>}"
+    # Only when set: these are arguments to `upload`, not project settings, so
+    # unset is the normal case and printing it every time says nothing.
+    [[ -n "${REMOTE_HOST:-}" ]] && echo "REMOTE_HOST         ${REMOTE_HOST}"
+    [[ -n "${REMOTE_DIR:-}" ]] && echo "REMOTE_DIR          ${REMOTE_DIR}"
+    parameters_report "$target"
     echo "---"
 }
 
@@ -362,10 +370,38 @@ validate() {
         echo "ok  ${template}"
 
         # Only deployment templates take parameters the pipeline does not pass.
-        local missing
-        missing=$(required_parameters "$template" | tr '\n' ' ')
-        if [[ -n "${missing// /}" ]]; then
-            echo "    set before deploying, no default: ${missing% }"
+        # A parameter with no default AND no value in deployment_parameters.json
+        # is one CloudFormation will refuse the deploy over.
+        # Which file supplies this template's parameters: the pipeline stack is
+        # deployed from cicd_parameters.json, the deployment stack from the
+        # target's deployment_parameters.json.
+        local missing name value present source_file unset_names="" placeholder_names=""
+        if [[ "$template" == "$CICD_FILE_NAME" ]]; then
+            source_file=$(parameters_file "$target")
+        else
+            source_file=$(parameter_value "$target" DeploymentParametersFilename 2>/dev/null || true)
+        fi
+
+        missing=$(required_parameters "$template")
+        for name in $missing; do
+            if [[ "$template" == "$CICD_FILE_NAME" ]]; then
+                value=$(parameter_value "$target" "$name" 2>/dev/null || true)
+                present=$([[ -n "$value" ]] && echo yes || true)
+            else
+                value=$(deployment_parameter "$target" "$name")
+                present=$(deployment_parameter_present "$target" "$name")
+            fi
+
+            if [[ -z "$present" ]]; then
+                unset_names+="${name} "
+            elif [[ "$value" == "<set me>" ]]; then
+                placeholder_names+="${name} "
+            fi
+        done
+        if [[ -n "$unset_names$placeholder_names" ]]; then
+            [[ -n "$unset_names" ]] && echo "    missing: ${unset_names% }"
+            [[ -n "$placeholder_names" ]] && echo "    still <set me>: ${placeholder_names% }"
+            echo "    set them in ${source_file:-the parameters file for this target}"
         fi
 
         # Pinning an old release is legitimate, so this reports rather than
@@ -749,8 +785,12 @@ logs() {
 
     if [[ -z "$group" || "$group" == None ]]; then
         local candidates
+        # Search the service name too: an ECS log group can be named after it
+        # alone, with nothing of the project in it.
+        local service_name
+        service_name=$(deployment_value "$TARGET" "$(parameter_value "$TARGET" DeploymentCfnFilename)" ServiceName 2>/dev/null || true)
         candidates=$(aws logs describe-log-groups \
-            --query "logGroups[?contains(logGroupName, '${STACK_NAME}')].logGroupName" \
+            --query "logGroups[?contains(logGroupName, '${STACK_NAME}') || contains(logGroupName, '${service_name:-$STACK_NAME}')].logGroupName" \
             --output text 2>/dev/null | tr '\t' '\n' | grep . || true)
 
         if [[ -n "$candidates" ]]; then
@@ -781,15 +821,94 @@ service_log_group() {
         return 0
     fi
 
-    local service_name family
-    service_name=$(template_default "$(parameter_value "$TARGET" DeploymentCfnFilename)" ServiceName)
-    [[ -n "$service_name" ]] || return 0
+    # Ask the stack what it built rather than guessing a name. The nested ECS
+    # modules have named the task definition ${ServiceName}-TaskDefinition in
+    # one release and ${ProjectName}-${ServiceName}-TaskDefinition in another,
+    # so any convention this script encodes is wrong for some version of it.
+    local service task_definition
+    service=$(stack_resource_id "$STACK_NAME" AWS::ECS::Service)
+    if [[ -n "$service" ]]; then
+        task_definition=$(aws ecs describe-services \
+            --cluster "${service%%/*}" --services "${service##*/}" \
+            --query 'services[0].taskDefinition' --output text 2>/dev/null || true)
+    fi
 
-    family="${STACK_NAME}-${service_name}-TaskDefinition"
-    aws ecs describe-task-definition --task-definition "$family" \
-        --query 'taskDefinition.containerDefinitions[0].logConfiguration.options."awslogs-group"' \
-        --output text 2>/dev/null | grep -v '^None$' || true
+    # Nothing running: fall back to the definition the family still holds,
+    # under either naming, so a rolled-back stack can still be read.
+    if [[ -z "$task_definition" || "$task_definition" == None ]]; then
+        local service_name family
+        service_name=$(deployment_value "$TARGET" "$(parameter_value "$TARGET" DeploymentCfnFilename)" ServiceName)
+        for family in "${STACK_NAME}-${service_name}-TaskDefinition" "${service_name}-TaskDefinition"; do
+            task_definition=$(aws ecs describe-task-definition --task-definition "$family" \
+                --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null || true)
+            [[ -n "$task_definition" && "$task_definition" != None ]] && break
+        done
+    fi
+
+    # A rolled-back or torn-down stack deregisters its task definitions, and
+    # describe-task-definition refuses a family whose revisions are all
+    # INACTIVE - but the revision is still there by arn, and still names the
+    # log group the old tasks wrote to.
+    if [[ -z "$task_definition" || "$task_definition" == None ]]; then
+        local service_name family
+        service_name=$(deployment_value "$TARGET" "$(parameter_value "$TARGET" DeploymentCfnFilename)" ServiceName)
+        for family in "${STACK_NAME}-${service_name}-TaskDefinition" "${service_name}-TaskDefinition"; do
+            task_definition=$(aws ecs list-task-definitions --family-prefix "$family" \
+                --status INACTIVE --sort DESC \
+                --query 'taskDefinitionArns[0]' --output text 2>/dev/null || true)
+            [[ -n "$task_definition" && "$task_definition" != None ]] && break
+        done
+    fi
+
+    if [[ -n "$task_definition" && "$task_definition" != None ]]; then
+        group=$(aws ecs describe-task-definition --task-definition "$task_definition" \
+            --query 'taskDefinition.containerDefinitions[0].logConfiguration.options."awslogs-group"' \
+            --output text 2>/dev/null | grep -v '^None$' || true)
+        [[ -n "$group" ]] && { echo "$group"; return 0; }
+    fi
+
+    # Last resort, and the only guess in here: the name the ECS modules use.
+    # Checked against the account rather than assumed, so a wrong guess reports
+    # nothing instead of tailing something that is not this service.
+    local service_name candidate
+    service_name=$(deployment_value "$TARGET" "$(parameter_value "$TARGET" DeploymentCfnFilename)" ServiceName)
+    for candidate in "/aws/ecs/${STACK_NAME}-${service_name}-LogGroup" \
+                     "/ecs/${STACK_NAME}-${service_name}-LogGroup" \
+                     "/ecs/${service_name}-LogGroup"; do
+        if aws logs describe-log-groups --log-group-name-prefix "$candidate" \
+            --query "logGroups[?logGroupName=='${candidate}'] | [0].logGroupName" \
+            --output text 2>/dev/null | grep -qv '^None$'; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 0
 }
+
+# The physical id of the first resource of a type in a stack, nested stacks
+# included - which is where the ECS service lives.
+#
+#   stack_resource_id my-service AWS::ECS::Service
+#
+stack_resource_id() {
+    local stack=$1 type=$2 id nested
+    id=$(aws cloudformation list-stack-resources --stack-name "$stack" \
+        --query "StackResourceSummaries[?ResourceType=='${type}'].PhysicalResourceId | [0]" \
+        --output text 2>/dev/null || true)
+    if [[ -n "$id" && "$id" != None ]]; then
+        echo "$id"
+        return 0
+    fi
+
+    for nested in $(aws cloudformation list-stack-resources --stack-name "$stack" \
+        --query "StackResourceSummaries[?ResourceType=='AWS::CloudFormation::Stack'].PhysicalResourceId" \
+        --output text 2>/dev/null | tr '\t' '\n'); do
+        id=$(stack_resource_id "$nested" "$type")
+        [[ -n "$id" ]] && { echo "$id"; return 0; }
+    done
+    return 0
+}
+
 
 # ---------------------------------------------------------------------------
 # teardown
@@ -909,24 +1028,20 @@ deployment_files() {
 #   required_parameters targets/service/server/deployment.yaml
 #
 required_parameters() {
-    awk '
-        # Top-level keys only. Resources carry their own nested "Parameters:"
-        # blocks, which is why this anchors to column 0 rather than allowing
-        # leading whitespace.
-        /^Parameters:[[:space:]]*$/ { in_parameters = 1; next }
-        /^[A-Za-z][A-Za-z0-9]*:/ {
-            if (in_parameters && name != "" && !has_default) print name
-            in_parameters = 0; name = ""; next
-        }
-        !in_parameters { next }
-        /^[[:space:]][[:space:]][[:space:]][[:space:]]?[A-Za-z][A-Za-z0-9]*:[[:space:]]*$/ {
-            if (name != "" && !has_default) print name
-            name = $1; sub(/:$/, "", name); has_default = 0; next
-        }
-        /^[[:space:]]*Default:/ { has_default = 1 }
-        END { if (in_parameters && name != "" && !has_default) print name }
-    ' "$1" | grep -vxE 'ImageName|ProjectName' || true
+    # Built on template_parameters rather than parsing again: this used to
+    # assume a 3-or-4 space indent, which is right for a deployment template
+    # and wrong for cicd.yaml, whose parameters sit at two - so nested keys
+    # like AllowedValues were reported as parameters.
+    local file=$1 name
+    for name in $(template_parameters "$file"); do
+        case "$name" in
+            ImageName|ProjectName) continue ;;
+        esac
+        [[ -z "$(has_default "$file" "$name")" ]] && echo "$name"
+    done
+    return 0
 }
+
 
 # Turn the environment file into the JSON blob lambda-0010.yaml expects.
 # Comments and blank lines are dropped; everything else is KEY=VALUE.
@@ -1008,6 +1123,137 @@ set_lambda_env_json() {
     ' "$file" > "$tmp" && mv "$tmp" "$file"
 }
 
+# A value from the target's deployment_parameters.json, the file CodePipeline
+# hands CloudFormation as the action's TemplateConfiguration. Empty if the file
+# or the key is absent.
+#
+#   deployment_parameter service/server DomainName
+#
+deployment_parameter() {
+    local file
+    file=$(parameter_value "$1" DeploymentParametersFilename 2>/dev/null || true)
+    [[ -n "$file" && -f "$file" ]] || return 0
+    jq -r --arg key "$2" '.Parameters[$key] // empty' "$file" 2>/dev/null || true
+}
+
+# Whether the file lists the parameter at all. "" is a real value - it means
+# "none", as for ContainerEnvironmentFileArn - so presence and emptiness are
+# different questions. A value of <set me> is neither: it is a placeholder the
+# template ships and the project has not replaced.
+deployment_parameter_present() {
+    local file
+    file=$(parameter_value "$1" DeploymentParametersFilename 2>/dev/null || true)
+    [[ -n "$file" && -f "$file" ]] || return 0
+    jq -e --arg key "$2" '.Parameters | has($key)' "$file" > /dev/null 2>&1 && echo yes || true
+}
+
+# Every parameter name in a template's Parameters block, in order. The two
+# kinds of template indent differently - cicd.yaml by two spaces,
+# deployment.yaml by four - so the indent of the first parameter sets what
+# counts, which also keeps nested keys out.
+#
+#   template_parameters targets/common/cicd.yaml
+#
+template_parameters() {
+    awk '
+        /^Parameters:[[:space:]]*$/ { in_parameters = 1; next }
+        /^[A-Za-z][A-Za-z0-9]*:/ { in_parameters = 0 }
+        !in_parameters { next }
+        /^[[:space:]]+[A-Za-z][A-Za-z0-9]*:[[:space:]]*$/ {
+            match($0, /^[[:space:]]*/)
+            if (indent == 0) indent = RLENGTH
+            if (RLENGTH != indent) next
+            name = $1; sub(/:$/, "", name)
+            print name
+        }
+    ' "$1"
+}
+
+# Whether a parameter declares a Default at all. `Default: ''` is a real
+# default meaning "empty"; no Default line means CloudFormation will refuse the
+# deploy until a value is given, and the two must not read the same.
+has_default() {
+    local file=$1 parameter=$2
+    awk -v want="$parameter" '
+        $0 ~ "^[[:space:]]*" want ":[[:space:]]*$" { found = 1; next }
+        found && /^[[:space:]]*Default:/ { print "yes"; exit }
+        found && /^[[:space:]]*[A-Za-z]/ && !/^[[:space:]]*(Type|Description|AllowedValues|AllowedPattern|NoEcho|MinLength|MaxLength):/ { exit }
+    ' "$file"
+}
+
+# A parameter default as one line: continuations joined, runs of whitespace
+# collapsed, and anything very long cut - a bucket list is 200 characters and
+# would wrap the report into uselessness.
+default_summary() {
+    local value
+    value=$(template_default "$1" "$2" | tr '\n' ' ')
+    value="${value//\\/ }"
+    value=$(echo "$value" | tr -s ' ' | sed 's/^ *//; s/ *$//')
+    if (( ${#value} > 44 )); then
+        echo "${value:0:41}..."
+    else
+        echo "$value"
+    fi
+}
+
+# The parameters of both templates and the value each will actually get: from
+# cicd_parameters.json where it is listed, from the template default where it
+# is not, and from the pipeline for the two it passes through. A parameter
+# missing from the json does not fall back to the template default on an
+# update - CloudFormation keeps whatever the stack already holds - so seeing
+# which is which is the point.
+parameters_report() {
+    local target="$1" deployment_file name value
+
+    echo ""
+    echo "cicd.yaml            ${CICD_FILE_NAME}"
+    echo "                     + $(parameters_file "$target")"
+    for name in $(template_parameters "$CICD_FILE_NAME"); do
+        value=$(parameter_value "$target" "$name" 2>/dev/null || true)
+        if [[ "$name" == ProjectName ]]; then
+            printf '  %-24s %-46s %s\n' "$name" "$STACK_NAME" "(from PROJECT_NAME, overrides the file)"
+        elif [[ -n "$value" ]]; then
+            printf '  %-24s %s\n' "$name" "$value"
+        else
+            printf '  %-24s %-46s %s\n' "$name" "$(default_summary "$CICD_FILE_NAME" "$name")" "(template default - not in the json)"
+        fi
+    done
+
+    deployment_file=$(parameter_value "$target" DeploymentCfnFilename)
+    [[ -f "$deployment_file" ]] || return 0
+
+    local parameters_file
+    parameters_file=$(parameter_value "$target" DeploymentParametersFilename 2>/dev/null || true)
+
+    echo ""
+    echo "deployment.yaml      ${deployment_file}"
+    [[ -n "$parameters_file" ]] && echo "                     + ${parameters_file}"
+    for name in $(template_parameters "$deployment_file"); do
+        local sent
+        sent=$(deployment_parameter "$target" "$name")
+        # Same cut as a template default: a 200-character bucket list would
+        # wrap the report into uselessness.
+        (( ${#sent} > 44 )) && sent="${sent:0:41}..."
+
+        case "$name" in
+            ImageName)   printf '  %-24s %-46s %s\n' "$name" "" "(from the build)" ;;
+            ProjectName) printf '  %-24s %-46s %s\n' "$name" "$STACK_NAME" "(from the pipeline)" ;;
+            *)
+                if [[ "$sent" == "<set me>" ]]; then
+                    printf '  %-24s %-46s %s\n' "$name" "$sent" "(NOT SET - the deploy will be wrong)"
+                elif [[ -n "$(deployment_parameter_present "$target" "$name")" ]]; then
+                    printf '  %-24s %-46s %s\n' "$name" "${sent:-''}" "(sent every deploy)"
+                elif [[ -z "$(has_default "$deployment_file" "$name")" ]]; then
+                    printf '  %-24s %-46s %s\n' "$name" "" "(NO VALUE - the deploy will be refused)"
+                else
+                    value=$(default_summary "$deployment_file" "$name")
+                    printf '  %-24s %-46s %s\n' "$name" "${value:-''}" "(template default)"
+                fi
+                ;;
+        esac
+    done
+}
+
 # Print the Default of any parameter in a deployment template, empty if the
 # parameter or its default is absent. Handles quoted and bare values.
 #
@@ -1020,6 +1266,13 @@ template_default() {
         found && /^[[:space:]]*Default:/ {
             line = $0
             sub(/^[[:space:]]*Default:[[:space:]]*/, "", line)
+            # A YAML value continued with a trailing backslash spans lines; the
+            # rest of it is as much the default as the first line is.
+            while (line ~ /\\$/ && (getline nextline) > 0) {
+                sub(/\\$/, "", line)
+                sub(/^[[:space:]]+/, "", nextline)
+                line = line nextline
+            }
             gsub(/^['"'"'"]|['"'"'"][[:space:]]*$/, "", line)
             print line
             exit
@@ -1040,16 +1293,31 @@ config_uri() {
     file=$(parameter_value "$target" DeploymentCfnFilename)
     [[ -f "$file" ]] || return 0
 
-    arn=$(template_default "$file" ContainerEnvironmentFileArn)
+    # These are parameters like any other, so they come from
+    # deployment_parameters.json, falling back to a template default for a
+    # project that has not moved its values there yet.
+    arn=$(deployment_value "$target" "$file" ContainerEnvironmentFileArn)
     if [[ -n "$arn" ]]; then
         echo "s3://${arn#arn:aws:s3:::}"
         return 0
     fi
 
-    bucket=$(template_default "$file" ConfigBucket)
-    name=$(template_default "$file" ConfigFileName)
+    bucket=$(deployment_value "$target" "$file" ConfigBucket)
+    name=$(deployment_value "$target" "$file" ConfigFileName)
     [[ -n "$bucket" && -n "$name" ]] || return 0
     echo "s3://${bucket}/${STACK_NAME}/${name}"
+}
+
+# What a deployment parameter will actually be: the value the parameters file
+# sends, or the template's default if that file does not list it. Anything
+# reading a parameter has to ask this rather than the template, now that the
+# templates carry no defaults.
+deployment_value() {
+    local target=$1 template=$2 name=$3 value
+    value=$(deployment_parameter "$target" "$name")
+    [[ -n "$value" ]] && { echo "$value"; return 0; }
+    [[ -n "$(deployment_parameter_present "$target" "$name")" ]] && return 0
+    template_default "$template" "$name"
 }
 
 # Where this target reads its environment file from, and whether it is there.
@@ -1065,14 +1333,15 @@ config() {
     # feature - so the same file becomes the function's Environment.Variables,
     # written into the deployment template rather than uploaded.
     if [[ -z "$uri" ]]; then
-        file=$(parameter_value "$target" DeploymentCfnFilename)
-        if [[ -f "$file" ]] && grep -q "EnvironmentVariables:" "$file"; then
+        file=$(parameter_value "$target" DeploymentParametersFilename 2>/dev/null || true)
+        if [[ -n "$file" && -f "$file" ]] \
+            && jq -e '.Parameters | has("EnvironmentVariables")' "$file" > /dev/null 2>&1; then
             echo "local   ${CONFIG_FILE_NAME}"
             echo "remote  ${file} (EnvironmentVariables, deployed by the pipeline)"
             if [[ ! -f "$CONFIG_FILE_NAME" ]]; then
                 echo "status  no local ${CONFIG_FILE_NAME}"
-            elif [[ "$(env_to_json "$CONFIG_FILE_NAME" | sed 's/^[[:space:]]*//')" \
-                == "$(lambda_env_json "$file" | sed 's/^[[:space:]]*//')" ]]; then
+            elif [[ "$(env_to_json "$CONFIG_FILE_NAME" | tr -s ' \n' ' ')" \
+                == "$(jq -r '.Parameters.EnvironmentVariables' "$file")" ]]; then
                 echo "status  in step"
             else
                 echo "status  DIFFERS from ${CONFIG_FILE_NAME} - config-upload to rewrite it"
@@ -1087,8 +1356,13 @@ config() {
     echo "remote  ${uri}"
 
     if aws s3 ls "$uri" > /dev/null 2>&1; then
-        if [[ -f "$CONFIG_FILE_NAME" ]] \
-            && ! aws s3 cp "$uri" - 2>/dev/null | diff -q - "$CONFIG_FILE_NAME" > /dev/null 2>&1; then
+        if [[ ! -f "$CONFIG_FILE_NAME" ]]; then
+            # Reporting "present" here would imply the two agree, when there is
+            # nothing local to agree with - usually CONFIG_FILE_NAME naming a
+            # file this project does not use.
+            echo "status  present remotely, but there is no local ${CONFIG_FILE_NAME}"
+            echo "        set CONFIG_FILE_NAME in project.env to the file this project keeps"
+        elif ! aws s3 cp "$uri" - 2>/dev/null | diff -q - "$CONFIG_FILE_NAME" > /dev/null 2>&1; then
             echo "status  present, DIFFERS from the local file - config-upload to replace it"
         else
             echo "status  present"
@@ -1111,18 +1385,21 @@ config_upload() {
         return 0
     fi
 
-    # No S3 object: a lambda target carries the same values as JSON inside its
-    # deployment template. That is a change to the repository, not to a bucket,
-    # so it has to be committed and pushed to take effect.
-    file=$(parameter_value "$target" DeploymentCfnFilename)
-    [[ -f "$file" ]] && grep -q "EnvironmentVariables:" "$file" \
+    # No S3 object: a lambda target carries the same values as the
+    # EnvironmentVariables parameter, which now lives in the target's
+    # deployment_parameters.json like every other parameter. That is a change
+    # to the repository, not to a bucket, so it has to be committed and pushed.
+    file=$(parameter_value "$target" DeploymentParametersFilename)
+    [[ -n "$file" && -f "$file" ]] \
         || die "ERROR: ${target} reads no environment file"
+    jq -e '.Parameters | has("EnvironmentVariables")' "$file" > /dev/null 2>&1 \
+        || die "ERROR: ${target} has no EnvironmentVariables parameter"
 
-    local json_file
-    json_file=$(mktemp)
-    env_to_json "$CONFIG_FILE_NAME" > "$json_file"
-    set_lambda_env_json "$file" "$json_file"
-    rm -f "$json_file"
+    local tmp
+    tmp=$(mktemp)
+    jq --arg env "$(env_to_json "$CONFIG_FILE_NAME" | tr -s ' \n' ' ')" \
+        '.Parameters.EnvironmentVariables = $env' "$file" > "$tmp" && mv "$tmp" "$file"
+
     echo "wrote ${CONFIG_FILE_NAME} into ${file} (EnvironmentVariables)"
     echo "  it deploys with the template - commit and push it"
 }
@@ -1210,16 +1487,14 @@ template_version() {
 #   nested_version targets/lambda/deployment.yaml
 #
 nested_version() {
-    local file=$1
-    awk '
-        /^[[:space:]]*TemplateVersion:[[:space:]]*$/ { found = 1; next }
-        found && /^[[:space:]]*Default:/ {
-            match($0, /"[^"]*"/)
-            print substr($0, RSTART + 1, RLENGTH - 2)
-            exit
-        }
-        found && /^[[:space:]]*[A-Za-z]/ && !/^[[:space:]]*(Type|Default|Description):/ { exit }
-    ' "$file"
+    # The deployment templates carry no defaults any more - every parameter is
+    # supplied by the target's deployment_parameters.json - so the version
+    # lives there too. The argument is still a deployment template, so callers
+    # do not change; it is mapped to the parameters file beside it.
+    local file=$1 parameters
+    parameters="$(dirname "$file")/deployment_parameters.json"
+    [[ -f "$parameters" ]] || return 0
+    jq -r '.Parameters.TemplateVersion // empty' "$parameters" 2>/dev/null || true
 }
 
 # Rewrite the TemplateVersion default of one deployment template.
@@ -1227,13 +1502,12 @@ nested_version() {
 #   set_nested_version targets/lambda/deployment.yaml v1.10.3
 #
 set_nested_version() {
-    local file=$1 version=$2 tmp
+    local file=$1 version=$2 parameters tmp
+    parameters="$(dirname "$file")/deployment_parameters.json"
+    [[ -f "$parameters" ]] || return 0
     tmp=$(mktemp)
-    awk -v version="$version" '
-        /^[[:space:]]*TemplateVersion:[[:space:]]*$/ { found = 1 }
-        found && /^[[:space:]]*Default:/ { sub(/"[^"]*"/, "\"" version "\""); found = 0 }
-        { print }
-    ' "$file" > "$tmp" && mv "$tmp" "$file"
+    jq --arg version "$version" '.Parameters.TemplateVersion = $version' "$parameters" > "$tmp" \
+        && mv "$tmp" "$parameters"
 }
 
 # ---------------------------------------------------------------------------

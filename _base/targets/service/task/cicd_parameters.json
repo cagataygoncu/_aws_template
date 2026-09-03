@@ -30,5 +30,17 @@
   {
     "ParameterKey": "TestBuildSpecFilename",
     "ParameterValue": "targets/common/buildspec_test.yaml"
+  },
+  {
+    "ParameterKey": "DeploymentParametersFilename",
+    "ParameterValue": "targets/service/task/deployment_parameters.json"
+  },
+  {
+    "ParameterKey": "TestReportDirectory",
+    "ParameterValue": "reports"
+  },
+  {
+    "ParameterKey": "TestReportFilename",
+    "ParameterValue": "pytest_reports.xml"
   }
 ]

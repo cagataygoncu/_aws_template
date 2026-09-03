@@ -1,0 +1,16 @@
+{
+  "Parameters": {
+    "ServiceName": "task",
+    "ContainerPort": "{{CONTAINER_PORT}}",
+    "TaskDefinitionCpu": "1024",
+    "TaskDefinitionMemory": "4096",
+    "S3BucketList": "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,arn:aws:s3:::gig-config,arn:aws:s3:::gig-config/*,arn:aws:s3:::*-laver-cup-*,arn:aws:s3:::*-laver-cup-*/*,arn:aws:s3:::*-aus-summer-*,arn:aws:s3:::*-aus-summer-*/*",
+    "ApiInvokeDomainUrl": "",
+    "NetworkStackName": "aolabs",
+    "ClusterStackName": "aolabs",
+    "ConfigBucket": "gig-config",
+    "ConfigFileName": "container_config.env",
+    "ContainerEnvironmentFileArn": "",
+    "TemplateVersion": "v1.10.2"
+  }
+}

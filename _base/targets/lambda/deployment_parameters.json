@@ -1,0 +1,16 @@
+{
+  "Parameters": {
+    "S3BucketList": "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,arn:aws:s3:::gig-config,arn:aws:s3:::gig-config/*,arn:aws:s3:::*-laver-cup-*,arn:aws:s3:::*-laver-cup-*/*,arn:aws:s3:::*-aus-summer-*,arn:aws:s3:::*-aus-summer-*/*",
+    "ApiId": "",
+    "ApiRootResourceId": "",
+    "ApiInvokeDomainUrl": "",
+    "LambdaFunctionName": "lambda",
+    "ApplicationLogLevel": "DEBUG",
+    "SystemLogLevel": "INFO",
+    "NetworkStackName": "aolabs",
+    "SubnetIds": "",
+    "SecurityGroupIds": "",
+    "EnvironmentVariables": "{ \"SERVICE_NAME\": \"{{PROJECT_NAME}}\", \"SECRET_NAME\": \"\", \"ENVIRONMENT\": \"dev\" } ",
+    "TemplateVersion": "v1.10.2"
+  }
+}

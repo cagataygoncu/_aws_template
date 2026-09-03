@@ -5,35 +5,24 @@ Description: aws-service-template
 Parameters:
     ImageName:
         Type: String
-        Default: ''
     # No default: the pipeline always passes this. Without one, a hand-run
     # deploy fails instead of creating a stack named after the template.
     ProjectName:
         Type: String
     S3BucketList:
         Type: String
-        Default: "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,\
-            arn:aws:s3:::gig-config,arn:aws:s3:::gig-config/*,\
-            arn:aws:s3:::*-laver-cup-*,arn:aws:s3:::*-laver-cup-*/*,\
-            arn:aws:s3:::*-aus-summer-*,arn:aws:s3:::*-aus-summer-*/*"
     ApiId:
         Type: String
-        Default: ''
     ApiRootResourceId:
         Type: String
-        Default: ''
     ApiInvokeDomainUrl:
         Type: String
-        Default: ''
     LambdaFunctionName:
         Type: String
-        Default: 'lambda'
     ApplicationLogLevel:
         Type: String
-        Default: "DEBUG"
     SystemLogLevel:
         Type: String
-        Default: "INFO"
     # VPC attachment. The private subnets and the cache client security group
     # are exported by the same base stack (gig-cfn-templates
     # projects/aolabs/aolabs-base.yaml), so they are always in the same VPC -
@@ -41,29 +30,18 @@ Parameters:
     # The exports are named after that stack's ProjectName, not its stack name.
     NetworkStackName:
         Type: String
-        Default: 'aolabs'
     # Empty means: derive from NetworkStackName. Set either to pin explicit
     # ids instead - keep them a matched pair if you do.
     SubnetIds:
         Type: CommaDelimitedList
-        Default: ''
     SecurityGroupIds:
         Type: CommaDelimitedList
-        Default: ''
     EnvironmentVariables:
       Type: String
-      Default: >-
-        {
-          "SERVICE_NAME": "{{PROJECT_NAME}}",
-          "SECRET_NAME": "",
-          "ENVIRONMENT": "dev"
-        }
-
     # gig-cfn-templates release that every nested stack below is pulled from.
     # Bump this one value to move the whole target to a new template version.
     TemplateVersion:
         Type: String
-        Default: "v1.10.2"
 
 Conditions:
     IntegrateLambdaToApi: !Not [!Equals [!Ref ApiId, '']]
@@ -139,7 +117,13 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource:
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectName}-${LambdaFunctionName}:*"
+                  # Trailing wildcard on the group name, not an exact match:
+                  # the group is created inside LambdaStack, which takes this
+                  # role, so !GetAtt on it would be circular - and the module
+                  # has named it both /aws/lambda/${ProjectName}-${LambdaFunctionName}
+                  # and ...-LogGroup across releases. Still scoped to this
+                  # project and function.
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectName}-${LambdaFunctionName}*:*"
         - PolicyName: bucket-access
           PolicyDocument:
             Version: '2012-10-17'

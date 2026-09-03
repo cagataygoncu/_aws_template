@@ -71,7 +71,6 @@ export PROJECT_NAME
 export TARGET
 export AWS_PROFILE
 export AWS_REGION
-export CONTAINER_PORT
 export BUILD_PLATFORM
 
 # Arguments for `make run`. Quoted here rather than passed positionally,

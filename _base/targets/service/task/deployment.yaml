@@ -5,32 +5,22 @@ Description: aws-service-template
 Parameters:
     ImageName:
         Type: String
-        Default: ''
     # No default: the pipeline always passes this. Without one, a hand-run
     # deploy fails instead of creating a stack named after the template.
     ProjectName:
         Type: String
     ServiceName:
         Type: String
-        Default: 'task'
     ContainerPort:
         Type: Number
-        Default: {{CONTAINER_PORT}}
     TaskDefinitionCpu:
         Type: Number
-        Default: 1024
     TaskDefinitionMemory:
         Type: Number
-        Default: 4096
     S3BucketList:
         Type: String
-        Default: "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,\
-            arn:aws:s3:::gig-config,arn:aws:s3:::gig-config/*,\
-            arn:aws:s3:::*-laver-cup-*,arn:aws:s3:::*-laver-cup-*/*,\
-            arn:aws:s3:::*-aus-summer-*,arn:aws:s3:::*-aus-summer-*/*"
     ApiInvokeDomainUrl:
         Type: String
-        Default: ''
 
     # The stacks whose exports this service imports - by default both are the
     # base stack (gig-cfn-templates projects/aolabs/aolabs-base.yaml), which
@@ -38,10 +28,8 @@ Parameters:
     # if the cluster ever lives somewhere other than the VPC's own stack.
     NetworkStackName:
         Type: String
-        Default: 'aolabs'
     ClusterStackName:
         Type: String
-        Default: 'aolabs'
 
     # Container config in S3. One file per project by convention:
     #   s3://<ConfigBucket>/<ProjectName>/<ConfigFileName>
@@ -52,19 +40,15 @@ Parameters:
     # must also be readable through S3BucketList above.
     ConfigBucket:
         Type: String
-        Default: 'gig-config'
     ConfigFileName:
         Type: String
-        Default: 'container_config.env'
     ContainerEnvironmentFileArn:
         Type: String
-        Default: ''
 
     # gig-cfn-templates release that every nested stack below is pulled from.
     # Bump this one value to move the whole target to a new template version.
     TemplateVersion:
         Type: String
-        Default: "v1.10.2"
 
 Conditions:
     HasEnvironmentFileArn: !Not [!Equals [!Ref ContainerEnvironmentFileArn, '']]
@@ -180,6 +164,11 @@ Resources:
                     Fn::Sub: '${ClusterStackName}-ClusterId'
                 TaskRoleArn: !GetAtt TaskRole.Arn
                 ImageName: !Ref ImageName
+                # ProjectName scopes every name the module creates - the ECS
+                # service, the task definition family, the autoscaling role and
+                # the log group are all ${ProjectName}-${ServiceName}-*. Pass
+                # ServiceName unprefixed: prefixing it here would double up.
+                ProjectName: !Ref ProjectName
                 ServiceName: !Ref ServiceName
                 ContainerPort: !Ref ContainerPort
                 # How the container is started. bootstrap.sh fills these in

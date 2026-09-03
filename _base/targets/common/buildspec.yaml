@@ -86,9 +86,30 @@ phases:
 
       docker tag $IMAGE_NAME $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_NAME
 
+      # The deployment stack's parameters, assembled in one place: what the
+      # repository declares, plus the two values only the pipeline knows.
+      # CodePipeline passes this to CloudFormation as the action's
+      # TemplateConfiguration, so every listed parameter is sent on every
+      # deploy - an unlisted one would silently keep whatever the stack holds.
+      IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_NAME"
+
+      if [ -f "$DEPLOYMENT_PARAMETERS_FILENAME" ]; then
+        echo "merging $DEPLOYMENT_PARAMETERS_FILENAME"
+      else
+        echo "no $DEPLOYMENT_PARAMETERS_FILENAME - sending only ImageName and ProjectName"
+        echo '{"Parameters":{}}' > "$DEPLOYMENT_PARAMETERS_FILENAME"
+      fi
+
+      jq --arg image "$IMAGE_URI" --arg project "$PROJECT_NAME" \
+        '.Parameters = ((.Parameters // {}) + {ImageName: $image, ProjectName: $project})' \
+        "$DEPLOYMENT_PARAMETERS_FILENAME" > template-configuration.json
+
+      cat template-configuration.json
+
+      # Kept for anything still reading it; the deploy action no longer does.
       cat << EOF > deployment-parameters.json
       {
-        "ImageName": "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_NAME"
+        "ImageName": "$IMAGE_URI"
       }
       EOF
   post_build:
@@ -99,3 +120,4 @@ artifacts:
   files:
     - $DEPLOYMENT_CFN_FILENAME
     - deployment-parameters.json
+    - template-configuration.json

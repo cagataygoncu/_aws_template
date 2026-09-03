@@ -1,0 +1,17 @@
+{
+  "Parameters": {
+    "ServiceName": "server",
+    "S3BucketList": "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,arn:aws:s3:::gig-config,arn:aws:s3:::gig-config/*,arn:aws:s3:::*-laver-cup-*,arn:aws:s3:::*-laver-cup-*/*,arn:aws:s3:::*-aus-summer-*,arn:aws:s3:::*-aus-summer-*/*",
+    "ContainerPort": "{{CONTAINER_PORT}}",
+    "TaskDefinitionCpu": "1024",
+    "TaskDefinitionMemory": "4096",
+    "NetworkStackName": "aolabs",
+    "ClusterStackName": "aolabs",
+    "HostedZoneId": "<set me>",
+    "DomainName": "<set me>",
+    "ConfigBucket": "gig-config",
+    "ConfigFileName": "container_config.env",
+    "ContainerEnvironmentFileArn": "",
+    "TemplateVersion": "v1.10.2"
+  }
+}
