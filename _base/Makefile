@@ -8,6 +8,8 @@
 #   make template-version [version]     nested gig-cfn-templates release
 #   make info          [target]
 #   make validate      [target]
+#   make config        [target]        where the env file is read from, is it there
+#   make config-upload [target]        upload it - the pipeline does not
 #   make deploy-cicd   [target]        create/update the pipeline stack
 #   make push      <branch>            push <branch> to CodeCommit main
 #   make upload    <host> <directory>  rsync this project to a remote host
@@ -107,7 +109,7 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help local-dev-setup info targets template-version aws-info validate deploy-cicd remote push pipeline \
+.PHONY: help local-dev-setup info targets template-version aws-info validate config config-upload deploy-cicd remote push pipeline \
         pipeline-stop upload outputs output-value url events logs delete-stack \
         delete-cicd delete-all build run invoke local-logs shell stop
 
@@ -119,6 +121,8 @@ template-version: ; @$(COMMANDS) template-version $(ARGS)
 aws-info:      ; @$(COMMANDS) aws-info
 
 validate:      ; @$(COMMANDS) validate      $(ARGS)
+config:        ; @$(COMMANDS) config        $(ARGS)
+config-upload: ; @$(COMMANDS) config-upload $(ARGS)
 deploy-cicd:   ; @$(COMMANDS) deploy-cicd   $(ARGS)
 remote:        ; @$(COMMANDS) remote
 push:          ; @$(COMMANDS) push          $(ARGS)

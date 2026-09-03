@@ -6,12 +6,13 @@ Parameters:
     ImageName:
         Type: String
         Default: ''
+    # No default: the pipeline always passes this. Without one, a hand-run
+    # deploy fails instead of creating a stack named after the template.
     ProjectName:
         Type: String
-        Default: 'aws-service-template'
     ServiceName:
         Type: String
-        Default: 'aws-service-task'
+        Default: 'task'
     ContainerPort:
         Type: Number
         Default: {{CONTAINER_PORT}}

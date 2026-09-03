@@ -6,9 +6,10 @@ Parameters:
     ImageName:
         Type: String
         Default: ''
+    # No default: the pipeline always passes this. Without one, a hand-run
+    # deploy fails instead of creating a stack named after the template.
     ProjectName:
         Type: String
-        Default: 'aws-service-template'
     S3BucketList:
         Type: String
         Default: "arn:aws:s3:::gig-ao,arn:aws:s3:::gig-ao/*,\
@@ -26,7 +27,7 @@ Parameters:
         Default: ''
     LambdaFunctionName:
         Type: String
-        Default: 'aws-service-lambda'
+        Default: 'lambda'
     ApplicationLogLevel:
         Type: String
         Default: "DEBUG"
@@ -52,12 +53,11 @@ Parameters:
     EnvironmentVariables:
       Type: String
       Default: >-
-          {
-            "DATABASE_URL": "postgres://",
-            "KMS_KEY_ID": "key-123",
-            "USER_POOL_ID": "pool-456",
-            "REDIS_SECRET_NAME": "2026-aus-summer-config-redis"
-          }
+        {
+          "SERVICE_NAME": "{{PROJECT_NAME}}",
+          "SECRET_NAME": "",
+          "ENVIRONMENT": "dev"
+        }
 
     # gig-cfn-templates release that every nested stack below is pulled from.
     # Bump this one value to move the whole target to a new template version.

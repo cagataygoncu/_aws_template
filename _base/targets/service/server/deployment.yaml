@@ -7,9 +7,10 @@ Parameters:
         Type: String
         Default: ''
 
+    # No default: the pipeline always passes this. Without one, a hand-run
+    # deploy fails instead of creating a stack named after the template.
     ProjectName:
         Type: String
-        Default: 'aws-template-server'
 
     ServiceName:
         Type: String
@@ -46,13 +47,15 @@ Parameters:
         Type: String
         Default: 'aolabs'
 
+    # No default on purpose: the zone the record above goes in.
     HostedZoneId:
         Type: AWS::Route53::HostedZone::Id
-        Default: 'Z0455879C45UXUVKIMBH' # tennisaction.com.au
 
+    # No default on purpose: this creates a Route 53 record, and two stacks
+    # cannot own one. Set it per project - CloudFormation refuses the deploy
+    # with "Parameters: [DomainName] must have values" until you do.
     DomainName:
         Type: String
-        Default: 'server.tennisaction.com.au'
 
     # Container config in S3. One file per project by convention:
     #   s3://<ConfigBucket>/<ProjectName>/<ConfigFileName>

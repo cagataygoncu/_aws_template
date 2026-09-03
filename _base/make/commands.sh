@@ -69,6 +69,11 @@ REMOTE_DIR="${REMOTE_DIR:-}"
 # Bucket the deployment templates pull their nested stacks from, by version.
 TEMPLATE_BUCKET="${TEMPLATE_BUCKET:-gig-cfn-templates}"
 
+# The environment file ECS reads at task start. It lives in the repo, is NOT in
+# the image, and the pipeline never uploads it - `config-upload` does, and
+# `config` says whether it is there.
+CONFIG_FILE_NAME="${CONFIG_FILE_NAME:-container_config.env}"
+
 # Where the AWS config lives ON THE HOST. `docker run -v` paths are resolved by
 # the daemon, so inside a devcontainer $HOME/.aws would name a path in the
 # container, not the one the daemon can see. The devcontainer sets this to the
@@ -267,7 +272,7 @@ targets() {
 #
 info() {
     local target="${1:-$TARGET}"
-    local parameters deployment_file docker_file base_image
+    local parameters deployment_file docker_file base_image template_version config_object
 
     # Resolved before anything is printed: assigned separately (not with
     # local), so an unknown target fails the command instead of printing a
@@ -276,6 +281,11 @@ info() {
     deployment_file=$(parameter_value "$target" DeploymentCfnFilename)
     docker_file=$(parameter_value "$target" DockerFilename)
     base_image=$(parameter_value "$target" BaseImageURI)
+    # The gig-cfn-templates release this target's nested stacks come from, and
+    # the environment file its tasks read - both live in the deployment
+    # template rather than cicd_parameters.json, so neither showed up here.
+    template_version=$(nested_version "$deployment_file")
+    config_object=$(config_uri "$target")
 
     echo "---"
     echo "PROJECT_NAME        ${PROJECT_NAME}"
@@ -291,6 +301,8 @@ info() {
     echo "DEPLOYMENT_FILE     ${deployment_file}"
     echo "DOCKER_FILE         ${docker_file}"
     echo "BASE_IMAGE_URI      ${base_image}"
+    echo "TEMPLATE_VERSION    ${template_version:-<none - this target pulls no nested stacks>}"
+    echo "CONFIG_OBJECT       ${config_object:-<none - this target reads no environment file>}"
     echo "BUILD_PLATFORM      ${BUILD_PLATFORM:-$(build_platform "$target")}"
     echo "CONTAINER_PORT      $(container_port "$target")"
     echo "RUN_ENV             ${RUN_ENV:-}"
@@ -332,6 +344,13 @@ validate() {
             cfn-lint --non-zero-exit-code error "$template"
         fi
         echo "ok  ${template}"
+
+        # Only deployment templates take parameters the pipeline does not pass.
+        local missing
+        missing=$(required_parameters "$template" | tr '\n' ' ')
+        if [[ -n "${missing// /}" ]]; then
+            echo "    set before deploying, no default: ${missing% }"
+        fi
     done
 }
 
@@ -362,6 +381,16 @@ deploy_cicd() {
         "$parameters" | tr '\n' ' ')
 
     # shellcheck disable=SC2086 - overrides is a deliberately word-split list.
+    # The task definition names an environment file ECS fetches at start. It is
+    # not in the image and nothing in the pipeline uploads it, so a missing
+    # object does not fail here - it fails much later, as the task refusing to
+    # start with ResourceInitializationError.
+    local config_object
+    config_object=$(config_uri "$target")
+    if [[ -n "$config_object" ]] && ! aws s3 ls "$config_object" > /dev/null 2>&1; then
+        die "ERROR: ${config_object} does not exist - the task will not start. Upload it first: make config-upload ${target}"
+    fi
+
     aws cloudformation deploy \
         --capabilities "${CAPABILITIES[@]}" \
         --stack-name "$CICD_STACK_NAME" \
@@ -693,6 +722,234 @@ deployment_files() {
     done | sort -u
 }
 
+# Parameters in a deployment template that have no Default, minus the two the
+# pipeline supplies (ImageName from the build, ProjectName from the cicd
+# stack). Anything left has to be set in the template itself before the first
+# deploy, or CloudFormation refuses it with "Parameters: [X] must have values"
+# - which is the point: better a refusal than inheriting the template's value
+# and creating a record in someone else's hosted zone.
+#
+#   required_parameters targets/service/server/deployment.yaml
+#
+required_parameters() {
+    awk '
+        # Top-level keys only. Resources carry their own nested "Parameters:"
+        # blocks, which is why this anchors to column 0 rather than allowing
+        # leading whitespace.
+        /^Parameters:[[:space:]]*$/ { in_parameters = 1; next }
+        /^[A-Za-z][A-Za-z0-9]*:/ {
+            if (in_parameters && name != "" && !has_default) print name
+            in_parameters = 0; name = ""; next
+        }
+        !in_parameters { next }
+        /^[[:space:]][[:space:]][[:space:]][[:space:]]?[A-Za-z][A-Za-z0-9]*:[[:space:]]*$/ {
+            if (name != "" && !has_default) print name
+            name = $1; sub(/:$/, "", name); has_default = 0; next
+        }
+        /^[[:space:]]*Default:/ { has_default = 1 }
+        END { if (in_parameters && name != "" && !has_default) print name }
+    ' "$1" | grep -vxE 'ImageName|ProjectName' || true
+}
+
+# Turn the environment file into the JSON blob lambda-0010.yaml expects.
+# Comments and blank lines are dropped; everything else is KEY=VALUE.
+#
+#   env_to_json container_config.env
+#
+env_to_json() {
+    local file=$1
+    awk -F= '
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+        NF < 2 { next }
+        {
+            key = $1
+            sub(/^[[:space:]]+/, "", key); sub(/[[:space:]]+$/, "", key)
+            value = substr($0, index($0, "=") + 1)
+            sub(/^[[:space:]]+/, "", value); sub(/[[:space:]]+$/, "", value)
+            gsub(/"/, "\\\"", value)
+            entries[n++] = "  \"" key "\": \"" value "\""
+        }
+        END {
+            print "{"
+            for (i = 0; i < n; i++) print entries[i] (i < n - 1 ? "," : "")
+            print "}"
+        }
+    ' "$file"
+}
+
+# Print the EnvironmentVariables default of a lambda deployment template,
+# leading whitespace stripped so it can be compared with env_to_json output.
+lambda_env_json() {
+    awk '
+        /^[[:space:]]*EnvironmentVariables:[[:space:]]*$/ {
+            match($0, /^[[:space:]]*/); indent = RLENGTH; found = 1; next
+        }
+        found && /^[[:space:]]*Default:[[:space:]]*>-/ { collecting = 1; found = 0; next }
+        collecting {
+            # The block ends at the first blank line, or the first line no more
+            # indented than the parameter itself - a sibling key or a comment.
+            if ($0 ~ /^[[:space:]]*$/) exit
+            match($0, /^[[:space:]]*/)
+            if (RLENGTH <= indent) exit
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            print line
+        }
+    ' "$1"
+}
+
+# Rewrite that default from a file holding the JSON. awk -v cannot carry
+# newlines, so the payload arrives as a path rather than a value.
+#
+# Lambda has no S3 environment file - that is an ECS task-definition feature -
+# so the same container_config.env becomes the function's Environment.Variables
+# through the ParseJsonMacro in lambda-0010.yaml. It lands in the repository
+# rather than a bucket, so it is committed and deployed like any other template
+# change.
+set_lambda_env_json() {
+    local file=$1 json_file=$2 tmp
+    tmp=$(mktemp)
+    awk -v jsonfile="$json_file" '
+        /^[[:space:]]*EnvironmentVariables:[[:space:]]*$/ {
+            match($0, /^[[:space:]]*/); indent = RLENGTH; found = 1; print; next
+        }
+        found && /^[[:space:]]*Default:[[:space:]]*>-/ {
+            print
+            while ((getline line < jsonfile) > 0) print sprintf("%*s", indent + 4, "") line
+            close(jsonfile)
+            skipping = 1; found = 0; next
+        }
+        skipping {
+            if ($0 ~ /^[[:space:]]*$/) { skipping = 0 }
+            else {
+                match($0, /^[[:space:]]*/)
+                if (RLENGTH <= indent) skipping = 0
+                else next
+            }
+        }
+        { print }
+    ' "$file" > "$tmp" && mv "$tmp" "$file"
+}
+
+# Print the Default of any parameter in a deployment template, empty if the
+# parameter or its default is absent. Handles quoted and bare values.
+#
+#   template_default targets/service/task/deployment.yaml ConfigBucket
+#
+template_default() {
+    local file=$1 parameter=$2
+    awk -v want="$parameter" '
+        $0 ~ "^[[:space:]]*" want ":[[:space:]]*$" { found = 1; next }
+        found && /^[[:space:]]*Default:/ {
+            line = $0
+            sub(/^[[:space:]]*Default:[[:space:]]*/, "", line)
+            gsub(/^['"'"'"]|['"'"'"][[:space:]]*$/, "", line)
+            print line
+            exit
+        }
+        found && /^[[:space:]]*[A-Za-z]/ && !/^[[:space:]]*(Type|Default|Description|AllowedValues|NoEcho):/ { exit }
+    ' "$file"
+}
+
+# The s3 URI of the environment file a target's tasks read at startup, exactly
+# as the deployment template composes it. ContainerEnvironmentFileArn wins when
+# set, which is how a project points at a shared file.
+#
+#   config_uri service/task
+#
+config_uri() {
+    local target="${1:-$TARGET}"
+    local file bucket name arn
+    file=$(parameter_value "$target" DeploymentCfnFilename)
+    [[ -f "$file" ]] || return 0
+
+    arn=$(template_default "$file" ContainerEnvironmentFileArn)
+    if [[ -n "$arn" ]]; then
+        echo "s3://${arn#arn:aws:s3:::}"
+        return 0
+    fi
+
+    bucket=$(template_default "$file" ConfigBucket)
+    name=$(template_default "$file" ConfigFileName)
+    [[ -n "$bucket" && -n "$name" ]] || return 0
+    echo "s3://${bucket}/${STACK_NAME}/${name}"
+}
+
+# Where this target reads its environment file from, and whether it is there.
+#
+#   config
+#   config service/server
+#
+config() {
+    local target="${1:-$TARGET}" uri file
+    uri=$(config_uri "$target")
+
+    # Lambda has no S3 environment file - that is an ECS task-definition
+    # feature - so the same file becomes the function's Environment.Variables,
+    # written into the deployment template rather than uploaded.
+    if [[ -z "$uri" ]]; then
+        file=$(parameter_value "$target" DeploymentCfnFilename)
+        if [[ -f "$file" ]] && grep -q "EnvironmentVariables:" "$file"; then
+            echo "local   ${CONFIG_FILE_NAME}"
+            echo "remote  ${file} (EnvironmentVariables, deployed by the pipeline)"
+            if [[ ! -f "$CONFIG_FILE_NAME" ]]; then
+                echo "status  no local ${CONFIG_FILE_NAME}"
+            elif [[ "$(env_to_json "$CONFIG_FILE_NAME" | sed 's/^[[:space:]]*//')" \
+                == "$(lambda_env_json "$file" | sed 's/^[[:space:]]*//')" ]]; then
+                echo "status  in step"
+            else
+                echo "status  DIFFERS from ${CONFIG_FILE_NAME} - config-upload to rewrite it"
+            fi
+            return 0
+        fi
+        echo "${target}: no environment file - this target reads none"
+        return 0
+    fi
+
+    echo "local   ${CONFIG_FILE_NAME}"
+    echo "remote  ${uri}"
+
+    if aws s3 ls "$uri" > /dev/null 2>&1; then
+        if [[ -f "$CONFIG_FILE_NAME" ]] \
+            && ! aws s3 cp "$uri" - 2>/dev/null | diff -q - "$CONFIG_FILE_NAME" > /dev/null 2>&1; then
+            echo "status  present, DIFFERS from the local file - config-upload to replace it"
+        else
+            echo "status  present"
+        fi
+    else
+        echo "status  MISSING - the task will fail to start: config-upload"
+    fi
+}
+
+# Upload the local environment file to where the deployment expects it. It is
+# not part of the image and the pipeline never touches it, so it has to be put
+# there once, and again whenever it changes.
+config_upload() {
+    local target="${1:-$TARGET}" uri file
+    uri=$(config_uri "$target")
+    require_file "$CONFIG_FILE_NAME"
+
+    if [[ -n "$uri" ]]; then
+        aws s3 cp "$CONFIG_FILE_NAME" "$uri"
+        return 0
+    fi
+
+    # No S3 object: a lambda target carries the same values as JSON inside its
+    # deployment template. That is a change to the repository, not to a bucket,
+    # so it has to be committed and pushed to take effect.
+    file=$(parameter_value "$target" DeploymentCfnFilename)
+    [[ -f "$file" ]] && grep -q "EnvironmentVariables:" "$file" \
+        || die "ERROR: ${target} reads no environment file"
+
+    local json_file
+    json_file=$(mktemp)
+    env_to_json "$CONFIG_FILE_NAME" > "$json_file"
+    set_lambda_env_json "$file" "$json_file"
+    rm -f "$json_file"
+    echo "wrote ${CONFIG_FILE_NAME} into ${file} (EnvironmentVariables)"
+    echo "  it deploys with the template - commit and push it"
+}
+
 # Show, or set, the gig-cfn-templates release the nested stacks are pulled
 # from - the TemplateVersion parameter of each deployment template, which is
 # the only place it lives.
@@ -1022,6 +1279,9 @@ project
 pipeline
   validate       [target]                     cicd + deployment templates
   deploy-cicd    [target]                     create/update the pipeline stack
+  config         [target]                     where the environment file is read
+                                              from, and whether it is there
+  config-upload  [target]                     upload it - the pipeline does not
   remote                                      point git remote at CodeCommit
   upload         <host> <directory>           rsync this project to a remote
                                               host; DRY_RUN=1 to preview
@@ -1078,6 +1338,8 @@ case "$command" in
     validate)       validate     "$@" ;;
     deploy-cicd)    deploy_cicd  "$@" ;;
     remote)         remote            ;;
+    config)         config       "$@" ;;
+    config-upload)  config_upload "$@" ;;
     upload)         upload       "$@" ;;
     push)           push         "$@" ;;
     pipeline)       pipeline          ;;

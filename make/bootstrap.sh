@@ -195,6 +195,11 @@ rsync_excludes=(
     --exclude='vendor'
     --exclude='*.pyc'
     --exclude='erl_crash.dump'
+    # Each language layer documents itself in LAYER.md, for whoever maintains
+    # this template. It describes the layer, not the project built from it, so
+    # it must not ship - and it would overwrite _base/README.md if it did,
+    # since the language layer rsyncs second.
+    --exclude='LAYER.md'
 )
 
 echo ">>> Copying _base/ -> destination"
