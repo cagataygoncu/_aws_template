@@ -527,7 +527,11 @@ push() {
         || die "ERROR: which branch? push <branch> - it is pushed to ${STACK_NAME}/main. Current branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
 
     git push "$STACK_NAME" "${branch}:main"
-    pipeline
+
+    # Deliberately not calling pipeline here: the push has only just landed, so
+    # what it would print is the PREVIOUS execution's state, which reads as if
+    # this one already finished. Run `make pipeline` when you want to look.
+    echo "pushed - the pipeline starts on the CodeCommit event: make pipeline"
 }
 
 # Print the state of every pipeline stage as a table. The pipeline is named
@@ -536,10 +540,21 @@ push() {
 #   pipeline
 #
 pipeline() {
+    # lastStatusChange lives on the action, not the stage, so it comes from the
+    # stage's last action. Without a time a stage that says Succeeded looks
+    # current whether it finished ten seconds or ten days ago.
+    printf '%-12s %-12s %s\n' "STAGE" "STATUS" "LAST CHANGE"
     aws codepipeline get-pipeline-state \
         --name "${CICD_STACK_NAME}-CodePipeline" \
-        --query 'stageStates[*].[stageName,latestExecution.status]' \
-        --output table
+        --query 'stageStates[*].[stageName,latestExecution.status,actionStates[-1].latestExecution.lastStatusChange]' \
+        --output text \
+        | awk -F'\t' '{
+            when = $3
+            sub(/\.[0-9]+/, "", when)
+            printf "%-12s %-12s %s\n", $1, ($2 == "None" ? "-" : $2), (when == "None" ? "-" : when)
+        }'
+    echo ""
+    echo "read at $(date '+%Y-%m-%dT%H:%M:%S%z')"
 }
 
 # Stop the pipeline execution that is currently in progress.
@@ -1375,8 +1390,9 @@ pipeline
   upload         <host> <directory>           rsync this project to a remote
                                               host; DRY_RUN=1 to preview
   push           <branch>                     push <branch> to CodeCommit main,
-                                              starting the pipeline
-  pipeline                                    stage states
+                                              which starts the pipeline
+  pipeline                                    stage states, with the time each
+                                              last changed
   pipeline-stop                               abandon the running execution
 
 deployment

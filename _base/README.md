@@ -22,9 +22,26 @@ make stop
 
 make deploy-cicd               # create the pipeline stack, wire the git remote
 make push <branch>             # push <branch> to CodeCommit main, start it
-make pipeline                  # stage states
+make pipeline                  # stage states, and when each last changed
 make url                       # where it ended up
+
+make delete-stack              # the service stack only
+make delete-cicd               # the pipeline stack; empties ECR + artifacts first
+make delete-all                # both, service first
 ```
+
+`make push` does not print the pipeline state: the push has only just landed,
+so what you would see is the *previous* execution's. `make pipeline` shows each
+stage with the time it last changed, which is how you tell a stage that just
+ran from one still showing last week's result.
+
+Teardown is ordered on purpose. The service stack goes first because the
+pipeline stack owns the ECR repository its images live in and the artifact
+bucket; `delete-cicd` empties both before deleting, since CloudFormation will
+not remove a non-empty bucket or repository. `delete-all` does the two in the
+right order. Deleting the service stack also releases its Route 53 record and
+ACM certificate, so a stack that later wants that domain needs this to happen
+first.
 
 Read `make info` before anything that writes. It prints the project, both stack
 names, the account, the resolved files, the build platform and the container
