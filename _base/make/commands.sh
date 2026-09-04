@@ -1506,18 +1506,32 @@ ecr_public_login() {
 # service one, leaving a dangling layer set and no way to tell from
 # `docker images` which target the survivor came from.
 #
-# Named from the resolved directory rather than what was typed, so `server`
-# and `service/server` tag the same image instead of building it twice.
-# Slashes are not legal in a tag, so service/task becomes service-task.
+# The tag is the target's last segment - the same name TARGET takes and
+# `make info` prints - resolved first, so `server` and `service/server` tag
+# one image rather than building it twice. The service/ nesting exists only
+# because the two service targets share a Dockerfile; it is not worth carrying
+# into a tag.
 #
-#   image_tag service/task    -> my-service:service-task
-#   image_tag task            -> my-service:service-task
+# It falls back to the full path when two targets share a last segment, which
+# no language layer does today: there the leaf name identifies neither, and a
+# tag that silently covered both would be the collision this function exists
+# to prevent. Slashes are not legal in a tag, so service/task becomes
+# service-task.
+#
+#   image_tag task            -> my-service:task
+#   image_tag service/task    -> my-service:task
 #
 image_tag() {
-    local target="${1:-$TARGET}" path
+    local target="${1:-$TARGET}" path leaf
     path=$(parameters_file "$target") || exit 1
     path=${path#targets/}
     path=${path%/cicd_parameters.json}
+
+    leaf=${path##*/}
+    if [[ $(targets | sed -e 's/^ *- *//' -e 's|.*/||' | grep -cx "$leaf") -le 1 ]]; then
+        echo "${STACK_NAME}:${leaf}"
+        return 0
+    fi
     echo "${STACK_NAME}:${path//\//-}"
 }
 
