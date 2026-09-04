@@ -1,40 +1,52 @@
 # {{PROJECT_NAME}}
 
-A {{LANGUAGE}} service deployed to AWS as a Lambda function or a Fargate task,
-built from `_aws_template`.
+A {{LANGUAGE}} service deployed to AWS as a Lambda function or a Fargate task.
 
 Everything is driven by `make`, which passes through to `./make/commands.sh` —
-one function per command. Run `make help` for the full list, or
-`./make/commands.sh <command> ...` directly when debugging (from the project
-root, where the script's relative paths resolve).
+one function per command. Run `make help` for the full list.
 
 ---
 
 > [!WARNING]
-> ## Set `PROJECT_NAME` before you deploy anything
+> ## Set `PROJECT_NAME` and `TARGET` before you deploy anything
 >
-> **`PROJECT_NAME` in `project.env` must be unique to this deployment.** Two
-> projects sharing a name do not get two deployments — they get one, and the
-> second person to run `make deploy-cicd` deploys *into the first one's
-> stacks*.
+> Both are declared in `project.env`. Between them they decide *which* AWS
+> resources a command touches and *what* gets put in them, and neither is
+> inferred from anything:
 >
 > ```zsh
 > # project.env
 > PROJECT_NAME=my-own-service      # <- yours, not whatever it says now
+> TARGET=server                    # <- lambda, task or server
 > ```
 >
-> `PROJECT_NAME` names both CloudFormation stacks and, through them, the ECR
-> repository, the CodeCommit repository, the pipeline, the artifact bucket, the
-> IAM roles, the ECS service and the environment file's path in S3. The pipeline
-> deploys with `StackName: !Ref ProjectName`, so a shared name is not a
-> collision that fails loudly — **it is a silent overwrite of someone else's
-> running service**.
+> **`PROJECT_NAME` must be unique to this deployment.** Two projects sharing a
+> name do not get two deployments — they get one, and the second person to run
+> `make deploy-cicd` deploys *into the first one's stacks*.
 >
-> Check it before the first deploy, and any time you are not certain what this
-> working copy is pointed at:
+> It names both CloudFormation stacks and, through them, the ECR repository,
+> the CodeCommit repository, the pipeline, the artifact bucket, the IAM roles,
+> the ECS service and the environment file's path in S3. The pipeline deploys
+> with `StackName: !Ref ProjectName`, so a shared name is not a collision that
+> fails loudly — **it is a silent overwrite of someone else's running service**.
+>
+> **`TARGET` decides what this project deploys** — a Lambda function
+> (`lambda`), a Fargate task with no load balancer (`task`), or one behind an
+> ALB with a domain (`server`). It selects the Dockerfile, the deployment
+> template and the base image, so a wrong value builds and deploys the wrong
+> thing without ever failing.
+>
+> It does **not** give you a second deployment. The stack is named after
+> `PROJECT_NAME` whatever the target, so changing `TARGET` and pushing again
+> rewrites the *same* stack — the Lambda function is deleted and an ECS
+> service created in its place, or the reverse. To run two shapes side by
+> side, give the second one its own `PROJECT_NAME`.
+>
+> Check both before the first deploy, and any time you are not certain what
+> this working copy is pointed at:
 >
 > ```zsh
-> make info | head -3
+> make info | head -4
 > ```
 
 ---
@@ -43,10 +55,10 @@ root, where the script's relative paths resolve).
 
 ```zsh
 make info                      # what every command is about to act on
-make config                    # is the environment file where ECS expects it?
-make sync-config             # put it there - nothing else will
+make config                    # are the environment variables correct?
+make sync-config               # put it there - nothing else will
 
-make local-build                     # the image the pipeline builds, same platform
+make local-build               # the image the pipeline builds, same platform
 make local-run ENTRYPOINT=... CMD="..."   # run it locally, MODE=local
 make local-logs                # follow what it is doing
 make stop
@@ -97,8 +109,8 @@ guessed at.
 positionally to override for a single run:
 
 ```zsh
-make local-build                     # uses $(TARGET)
-make local-build lambda              # just this once
+make local-build               # uses $(TARGET)
+make local-build lambda        # just this once
 ```
 
 Per-target facts — the deployment template, the Dockerfile, the base image, the
@@ -154,7 +166,7 @@ is **not** in the image, and neither the build nor the pipeline uploads it:
 
 ```zsh
 make config                    # where it is read from, and whether it is there
-make sync-config             # upload it, and again whenever it changes
+make sync-config               # upload it, and again whenever it changes
 ```
 
 `make deploy-cicd` refuses to run when that object is missing, because a
@@ -273,7 +285,7 @@ micromamba activate ./venv
 make info                      # project, stacks, account, resolved files
 make info lambda               # ... for a different target
 make targets                   # targets this project still has
-make config                    # the environment file
+make config                    # the environment variables
 make template-version          # the gig-cfn-templates release each target pulls
 make aws-info
 ```
@@ -286,7 +298,7 @@ pipeline).
 
 ```zsh
 make validate                  # cicd.yaml + the target's deployment.yaml
-make sync-config             # once, and whenever the env file changes
+make sync-config               # once, and whenever the env file changes
 make deploy-cicd               # create/update the pipeline, wire the git remote
 make push <branch>             # push it to CodeCommit main, starting the pipeline
 make pipeline                  # stage states
@@ -357,10 +369,10 @@ stack, so anything else has to be set in the target's `deployment.yaml`:
 
 #### Worked example
 
-Working on a `modernise` branch, deploying beside a live `my-service`:
+Working on a `new-branch` branch, deploying beside a live `my-service`:
 
 ```zsh
-git checkout -b modernise
+git checkout -b new-branch
 
 # 1. Name the second deployment, in project.env. Nothing infers it: the
 #    directory is still named after the ORIGINAL project, and a fallback to
@@ -373,10 +385,10 @@ git checkout -b modernise
 
 make info                      # read every name before creating anything
 make validate                  # templates, and what still has no default
-make sync-config             # the environment file, at the NEW path
+make sync-config               # the environment file, at the NEW path
 
 make deploy-cicd               # creates my-service-v2-cicd, adds the git remote
-make push modernise            # to the new remote only - see below
+make push new-branch           # to the new remote only - see below
 make pipeline
 ```
 
@@ -394,7 +406,7 @@ my-service-v2   ssh://.../my-service-v2-cicd-CodeCommitRepository     (the new o
 `make push <branch>` pushes to the remote named after **this** project's stack,
 so it reaches only that pipeline. Each pipeline watches `main` in its own
 CodeCommit repository and never sees the other's pushes. The branch name is
-local: `make push modernise` lands as `main` on the far side, which is what the
+local: `make push new-branch` lands as `main` on the far side, which is what the
 pipeline triggers on.
 
 The corollary is worth stating: `git push aws main` or pushing to the *old*
@@ -550,7 +562,7 @@ substituted:
 $ make local-run TARGET=lambda
 ERROR: no ENTRYPOINT and no CMD - the image would run its own default ...
   lambda deploys this, from targets/lambda/deployment.yaml:
-    make local-run ENTRYPOINT="/lambda-entrypoint.sh" CMD="src.main_lambda.lambda_handler_1" TARGET=lambda
+    make local-run ENTRYPOINT="/lambda-entrypoint.sh" CMD="{{RUN_CMD_LAMBDA}}" TARGET=lambda
 ```
 
 The container gets only the AWS variables by default — `AWS_PROFILE`,
