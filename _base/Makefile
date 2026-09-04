@@ -118,7 +118,7 @@ endif
 
 .PHONY: help local-dev-setup info targets template-version aws-info lint validate config sync-config deploy-cicd remote push pipeline \
         pipeline-stop upload outputs output-value url events logs delete-stack \
-        delete-cicd delete-all local-build local-run invoke local-logs shell stop
+        delete-cicd delete-all local-build local-run invoke local-logs shell local-stop
 
 help:          ; @$(COMMANDS) help
 local-dev-setup: ; @$(COMMANDS) local-dev-setup
@@ -154,4 +154,4 @@ local-run:     ; @RUN_ENV="$(RUN_ENV)" $(COMMANDS) local-run "$(ENTRYPOINT)" "$(
 invoke:        ; @$(COMMANDS) invoke        '$(JSON)'
 local-logs:    ; @$(COMMANDS) local-logs
 shell:         ; @$(COMMANDS) shell
-stop:          ; @$(COMMANDS) stop
+local-stop:    ; @$(COMMANDS) local-stop

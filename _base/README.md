@@ -61,7 +61,7 @@ make sync-config               # put it there - nothing else will
 make local-build               # the image the pipeline builds, same platform
 make local-run ENTRYPOINT=... CMD="..."   # run it locally, MODE=local
 make local-logs                # follow what it is doing
-make stop
+make local-stop
 
 make lint                      # source, and cfn-lint over every template
 make validate                  # cicd.yaml + this target's deployment.yaml
@@ -545,7 +545,7 @@ make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=
 
 make local-logs
 make shell
-make stop
+make local-stop
 ```
 
 `make local-run` with neither is refused rather than guessed: the image's own default

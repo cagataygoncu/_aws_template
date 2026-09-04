@@ -1939,7 +1939,7 @@ local_run() {
             echo "port:   localhost:${port} -> container ${target_port}, if the process serves HTTP"
         fi
         echo "logs:   make local-logs"
-        echo "stop:   make stop"
+        echo "stop:   make local-stop"
         return 0
     fi
 
@@ -2001,9 +2001,9 @@ shell() {
 
 # Stop and remove the local container.
 #
-#   stop
+#   local-stop
 #
-stop() {
+local_stop() {
     docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1 || true
     echo "stopped ${CONTAINER_NAME}"
 }
@@ -2083,7 +2083,7 @@ local docker
   invoke         [json]                       POST to the local lambda emulator
   local-logs
   shell
-  stop
+  local-stop
 
 Defaults: PROJECT_NAME=${PROJECT_NAME} TARGET=${TARGET} AWS_PROFILE=${AWS_PROFILE}
 Override any of them in the environment, or edit the Makefile for the project.
@@ -2133,7 +2133,7 @@ case "$command" in
     invoke)         invoke       "$@" ;;
     local-logs)     local_logs        ;;
     shell)          shell             ;;
-    stop)           stop              ;;
+    local-stop)     local_stop        ;;
     aws-info)       aws_info          ;;
     help|-h|--help) help              ;;
     *)              echo "ERROR: unknown command '${command}'" >&2

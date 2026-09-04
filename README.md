@@ -614,7 +614,7 @@ make local-run ENTRYPOINT=uvicorn CMD="src.main_server:app --host 0.0.0.0 --port
 
 make local-logs
 make shell
-make stop
+make local-stop
 ```
 
 `ENTRYPOINT` and `CMD` are the `ContainerEntryPoint` and `ContainerCmd` the
