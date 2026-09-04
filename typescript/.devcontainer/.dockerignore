@@ -1,0 +1,11 @@
+# Ignore everything
+*
+
+# Allow files and directories
+!/src/my_app
+
+# Ignore unnecessary files inside allowed directories
+**/*~
+**/*.log
+**/.DS_Store
+**/Thumbs.db

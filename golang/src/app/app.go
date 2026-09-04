@@ -10,12 +10,9 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
-	"github.com/GIGTennis/gig_utils_go/database"
 	"github.com/GIGTennis/gig_utils_go/security"
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
 // Mode decides where the service gets the things it depends on. Deployed code
@@ -50,86 +47,29 @@ func GetMode() Mode {
 	}
 }
 
-// Config is whatever the request handler needs that comes from outside it.
-// Online it comes from the environment the deployment sets - container_config.env
-// for ECS, the function configuration for Lambda - and this is where a call to
-// Secrets Manager or Parameter Store belongs. Locally it is filled in with
-// values that need no AWS account.
-type Config struct {
-	ServiceName string `json:"service_name"`
-	Environment string `json:"environment"`
-}
-
-func LoadConfig(mode Mode) Config {
-	if mode == ModeLocal {
-		return Config{ServiceName: "local", Environment: "dev"}
-	}
-	return Config{
-		ServiceName: os.Getenv("SERVICE_NAME"),
-		Environment: os.Getenv("ENVIRONMENT"),
-	}
-}
-
-// GetCache mirrors the Python stub: online reads the Redis endpoints from
-// Secrets Manager with the task role and connects; local uses an in-memory
-// map, so a local run needs no AWS account and no Redis.
-func GetCache(ctx context.Context, mode Mode) (database.Cache, error) {
-	if mode == ModeLocal {
-		return database.GetCacheInMemory(5 * time.Minute), nil
-	}
-
-	var redisConfig database.RedisConfig
-	err := security.GetSecretAsStruct(
-		ctx,
-		os.Getenv("SECRET_NAME"),
-		os.Getenv("AWS_REGION"),
-		&redisConfig,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("read redis config from secrets manager: %w", err)
-	}
-
-	return database.GetCacheRedis(&redisConfig, false)
-}
-
 // ProcessRequest is the one function a target calls: the server handler, the
 // task loop and the Lambda handler all funnel into it, so the behaviour is the
-// same however this is deployed.
-func ProcessRequest(ctx context.Context, eventData string, mode Mode) (map[string]any, error) {
-	config := LoadConfig(mode)
-
-	cache, err := GetCache(ctx, mode)
-	if err != nil {
-		return nil, err
-	}
-	defer cache.Close()
-
-	// A request id makes one request traceable across log lines, which is the
-	// only way to follow anything once several run concurrently.
-	requestID := uuid.NewString()
-
-	input := map[string]any{"event_data": eventData, "mode": string(mode)}
-	log.Printf("[%s] input: %v", requestID, input)
-
-	// Replace this with the work the service actually does. It is here to
-	// prove the cache round-trips before anything real depends on it.
-	if err := cache.SetValue(ctx, config.ServiceName, requestID, eventData); err != nil {
-		return nil, fmt.Errorf("cache write: %w", err)
-	}
-	var stored string
-	if err := cache.GetValue(ctx, config.ServiceName, requestID, &stored); err != nil {
-		return nil, fmt.Errorf("cache read: %w", err)
+// same however this is deployed. It mirrors process_request in src/main.py.
+func ProcessRequest(ctx context.Context, eventData string, mode Mode) (string, error) {
+	if mode == ModeOnline {
+		// The one gig_utils call this template demonstrates: anything that
+		// must not sit in the environment file - endpoints, credentials, keys
+		// - comes from Secrets Manager, read with the task role. Log that it
+		// was read, never what it contained.
+		secretName := os.Getenv("SECRET_NAME")
+		var settings map[string]any
+		if err := security.GetSecretAsStruct(ctx, secretName, os.Getenv("AWS_REGION"), &settings); err != nil {
+			return "", fmt.Errorf("read %s from secrets manager: %w", secretName, err)
+		}
+		log.Printf("read %d settings from %s", len(settings), secretName)
 	}
 
-	output := map[string]any{
-		"request_id": requestID,
-		"service":    config.ServiceName,
-		"env":        config.Environment,
-		"echo":       stored,
-		"length":     len(stored),
-	}
+	input := map[string]any{"event_data": eventData}
+	log.Printf("input: %v", input)
 
-	log.Printf("[%s] output: %v for input: %v", requestID, output, input)
+	output := F1(input)
+
+	log.Printf("output: %s for input: %v", output, input)
 	return output, nil
 }
 
@@ -153,7 +93,7 @@ func Serve(port string, mode Mode) error {
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
-		return c.JSON(output)
+		return c.JSON(fiber.Map{"output": output})
 	})
 
 	log.Printf("listening on :%s in %s mode", port, mode)

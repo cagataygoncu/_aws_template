@@ -379,6 +379,80 @@ info() {
 #   <project>        the service itself, created by that pipeline
 # ---------------------------------------------------------------------------
 
+# Static checks on the source, before anything is built, validated or
+# deployed. The command is the language layer's, filled in by bootstrap.sh -
+# there is no language-agnostic linter, and inferring one from the files lying
+# around is exactly the kind of guess this script avoids.
+#
+# Change it here if the project adopts a different tool. Empty means this
+# project has no linter, which `lint` reports rather than passing silently.
+#
+#   lint
+#
+LINT_TOOL="{{LINT_TOOL}}"
+LINT_COMMAND="{{LINT_COMMAND}}"
+LINT_INSTALL="{{LINT_INSTALL}}"
+
+lint() {
+    lint_source
+    echo
+    lint_templates
+}
+
+# The language layer's own checks - ruff, go vet, clang-format, whichever.
+lint_source() {
+    [[ -n "$LINT_COMMAND" ]] || die "ERROR: no linter configured for this project.
+  Set LINT_TOOL, LINT_COMMAND and LINT_INSTALL near the top of make/commands.sh."
+
+    if ! command -v "$LINT_TOOL" > /dev/null 2>&1; then
+        die "ERROR: ${LINT_TOOL} is not installed.
+  ${LINT_INSTALL}"
+    fi
+
+    # Printed, not silent: the command is a constant in this file rather than
+    # something passed in, and knowing which checks ran is the point.
+    echo "running: ${LINT_COMMAND}"
+    # eval, because the value is a shell line with its own quoting and may
+    # chain two checks - a lint and a format check. It is a constant defined
+    # above, never an argument.
+    eval "$LINT_COMMAND"
+    echo "source ok"
+}
+
+# cfn-lint over every CloudFormation template in the repository, which is more
+# than `validate` sees: validate checks the two templates one target uses,
+# this checks all of them, so a target you are not deploying today cannot rot
+# unnoticed.
+#
+# Missing cfn-lint is fatal here, unlike in validate. validate has its own
+# checks and treats cfn-lint as a bonus; lint has no other job, so quietly
+# doing half of it is the silent-skip this script exists to avoid.
+lint_templates() {
+    if ! command -v cfn-lint > /dev/null 2>&1; then
+        die "ERROR: cfn-lint is not installed.
+  pip install cfn-lint, or conda install -c conda-forge cfn-lint"
+    fi
+
+    local template
+    for template in $(cfn_templates); do
+        require_file "$template"
+        # Warnings are printed but do not fail, the same rule validate uses:
+        # templates legitimately carry unused parameters and W-level style
+        # findings, and a lint that cries wolf gets ignored.
+        cfn-lint --non-zero-exit-code error "$template"
+        echo "ok  ${template}"
+    done
+}
+
+# Every CloudFormation template this project owns: the pipeline's, and one per
+# target. Taken from the targets rather than by globbing *.yaml, which would
+# also pick up the buildspecs - those are YAML but not templates, and cfn-lint
+# reports them as errors.
+cfn_templates() {
+    echo "$CICD_FILE_NAME"
+    deployment_files
+}
+
 # Check the cicd template and the target's deployment template parse and are
 # well formed. Runs automatically before deploy-cicd. Also runs cfn-lint when
 # it is installed.
@@ -1970,6 +2044,8 @@ project
   help
 
 pipeline
+  lint                                        static checks: the source, and
+                                              cfn-lint over every template
   validate       [target]                     cicd + deployment templates
   deploy-cicd    [target]                     create/update the pipeline stack
   config         [target]                     where the environment file is read
@@ -2033,6 +2109,7 @@ case "$command" in
     info)           info         "$@" ;;
     targets)        targets           ;;
     template-version) template_version "$@" ;;
+    lint)           lint              ;;
     validate)       validate     "$@" ;;
     deploy-cicd)    deploy_cicd  "$@" ;;
     remote)         remote            ;;

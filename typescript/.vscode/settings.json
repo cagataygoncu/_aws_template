@@ -1,0 +1,15 @@
+{
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    },
+    "editor.tabSize": 4,
+    "eslint.validate": ["typescript"],
+    // The workspace's own TypeScript, so the editor and `npm run build` agree
+    // on the compiler version.
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "files.exclude": {
+        "**/node_modules": true,
+        "**/build": true
+    }
+}

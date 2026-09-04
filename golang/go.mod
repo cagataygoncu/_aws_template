@@ -8,9 +8,9 @@ go {{LANGUAGE_VERSION}}
 
 // gig_utils_go is private: the targets' Dockerfiles pass the ssh agent through
 // with --mount=type=ssh and rewrite the https url to git@. aws-lambda-go is
-// what makes main_lambda a Lambda; fiber serves main_server; uuid tags each
-// request. The Dockerfiles run go mod tidy during the build, so anything the
-// source stops importing drops out on its own.
+// what makes main_lambda a Lambda; fiber serves main_server. The Dockerfiles
+// run go mod tidy during the build, so anything the source stops importing -
+// uuid, still listed below - drops out on its own.
 require (
 	github.com/GIGTennis/gig_utils_go v0.0.89
 	github.com/aws/aws-lambda-go v1.55.0

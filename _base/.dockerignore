@@ -20,3 +20,4 @@
 !/package.json
 !/package-lock.json
 !/CMakeLists.txt
+!/tsconfig.json

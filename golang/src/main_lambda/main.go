@@ -15,7 +15,11 @@ import (
 // straight to the same ProcessRequest the other two targets use.
 func Handler(ctx context.Context, event map[string]any) (map[string]any, error) {
 	eventData, _ := event["event_data"].(string)
-	return app.ProcessRequest(ctx, eventData, app.GetMode())
+	output, err := app.ProcessRequest(ctx, eventData, app.GetMode())
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"output": output}, nil
 }
 
 func main() {

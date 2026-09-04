@@ -1,0 +1,60 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Debug whichever entrypoint is open - src/main_task.ts,
+            // src/main_server.ts or src/main_lambda.ts. tsx runs the
+            // TypeScript directly, so there is no build step between an edit
+            // and a breakpoint; `npm run build` is what the images do.
+            //
+            // MODE=local makes processRequest skip the Secrets Manager read,
+            // the same thing the Makefile's RUN_ENV default does for
+            // `make local-run`.
+            "name": "Debug current entrypoint",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npx",
+            "runtimeArgs": ["tsx", "${file}"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": { "MODE": "local" },
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
+            "name": "Task",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npx",
+            "runtimeArgs": ["tsx", "${workspaceFolder}/src/main_task.ts"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": { "MODE": "local" },
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
+            // PORT is what the process binds; the deployed server takes it
+            // from DEFAULT_PORT, substituted from the same value as
+            // ContainerPort.
+            "name": "Server",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npx",
+            "runtimeArgs": ["tsx", "${workspaceFolder}/src/main_server.ts"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": { "MODE": "local", "PORT": "{{CONTAINER_PORT}}" },
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
+            // The compiled tests, which is what `npm test` runs. Build first.
+            "name": "Unit tests",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["test"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        }
+    ]
+}

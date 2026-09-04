@@ -140,14 +140,19 @@ _aws_template/
 │   ├── src/, tests/unit/, go.mod, go.sum, .devcontainer/, .vscode/
 │   ├── environment.yaml                      # go, gopls, delve
 │   └── targets/{lambda,service}/Dockerfile   # multi-stage `go build`
+├── typescript/         # Node + TypeScript layer — a service, not a web app
+│   ├── src/, lib/, tests/unit/, package.json, tsconfig.json, .devcontainer/, .vscode/
+│   ├── eslint.config.mjs                     # flat config, typescript-eslint
+│   ├── environment.yaml                      # nodejs
+│   └── targets/{lambda,service}/Dockerfile   # tsc to build/, then run node
 ├── cpp/                # C++ language layer
 │   ├── src/, CMakeLists.txt, .gdbinit, .devcontainer/, .vscode/
 │   ├── environment.yaml                      # cxx-compiler, cmake, ninja
 │   └── targets/{lambda,service}/Dockerfile   # CMake build + provided.al2 for lambda
-├── nextjs/             # Next.js language layer (TS, Tailwind)
+├── nextjs/             # Next.js language layer (TS, Tailwind) — no lambda target
 │   ├── src/, package.json, tsconfig.json, next.config.mjs, .devcontainer/, .vscode/
 │   ├── environment.yaml                      # nodejs
-│   └── targets/{lambda,service}/Dockerfile   # npm ci + Next build
+│   └── targets/service/Dockerfile            # npm ci + Next build
 ├── elixir/             # Elixir Mix project layer
 │   ├── lib/, test/, mix.exs, mix.lock, .devcontainer/, .vscode/
 │   ├── environment.yaml                      # elixir (pulls erlang/OTP)
@@ -201,9 +206,10 @@ the first `make local-build` or devcontainer open, not at scaffold time.
 | Language | `language_version` | also |
 |----------|--------------------|------|
 | python   | `3.12`             | Ruff formats and lints it, per `ruff.toml` |
-| golang   | `1.23`             | |
+| golang   | `1.26`             | |
+| typescript | `22`             | a plain Node service; `nextjs` is the web-app layer |
 | cpp      | `bookworm`         | a distro release, not a toolchain version |
-| nextjs   | `20`               | |
+| nextjs   | `20`               | no lambda target — a Next.js app is a server |
 | elixir   | `1.19`             | `otp_version="27"` → `{{OTP_VERSION}}` |
 
 Two versions deliberately stay put: `TemplateVersion` (the gig-cfn-templates
@@ -221,13 +227,14 @@ Dockerfile as `BASE_IMAGE_URI`. Rather than copy every
 `_base/` carries a placeholder and `make/bootstrap.sh` substitutes the language's
 image — the same mechanism as `{{PROJECT_NAME}}`:
 
-| Language | `{{BASE_IMAGE_LAMBDA}}`              | `{{BASE_IMAGE_SERVICE}}`                        |
-|----------|--------------------------------------|-------------------------------------------------|
-| python   | `lambda/python:3.12`                 | `docker/library/python:3.12`                    |
-| golang   | `lambda/provided:al2023`             | `docker/library/golang:1.23-bookworm`           |
-| cpp      | `lambda/provided:al2023`             | `docker/library/debian:bookworm`                |
-| nextjs   | `lambda/nodejs:20`                   | `docker/library/node:20-bookworm-slim`          |
-| elixir   | `lambda/provided:al2023`             | `docker/library/elixir:1.19-otp-27`             |
+| Language   | `{{BASE_IMAGE_LAMBDA}}`    | `{{BASE_IMAGE_SERVICE}}`                |
+|------------|----------------------------|-----------------------------------------|
+| python     | `lambda/python:3.12`       | `docker/library/python:3.12`            |
+| golang     | `lambda/provided:al2023`   | `docker/library/golang:1.26-bookworm`   |
+| typescript | `lambda/nodejs:22`         | `docker/library/node:22-bookworm-slim`  |
+| cpp        | `lambda/provided:al2023`   | `docker/library/debian:bookworm`        |
+| nextjs     | — (no lambda target)       | `docker/library/node:20-bookworm-slim`  |
+| elixir     | `lambda/provided:al2023`   | `docker/library/elixir:1.19-otp-27`     |
 
 (all under `public.ecr.aws/`)
 
@@ -241,13 +248,14 @@ language-specific — `{{CONTAINER_PORT}}`, `{{CONTAINER_WORKDIR}}`,
 `{{CONTAINER_ENTRYPOINT_TASK}}`, `{{CONTAINER_CMD_TASK}}` and the two `_SERVER`
 equivalents in `_base/targets/service/*/deployment.yaml`:
 
-| Language | port | workdir | task | server |
-|----------|------|--------------|---------------------------|---------------------------------|
-| python   | 5040 | `/`          | `python src/main_task.py` | `uvicorn src.main_server:app …` |
-| golang   | 5040 | `/app/build` | `env /app/build/main`     | `env /app/build/main`           |
-| cpp      | 5040 | `/app/build` | `env /app/build/main`     | `env /app/build/main`           |
-| nextjs   | 3000 | `/app`       | `node server.mjs`         | `node server.mjs`               |
-| elixir   | 4000 | `/app`       | `/app/bin/example start`  | `/app/bin/example start`        |
+| Language   | port | workdir      | task                          | server                          |
+|------------|------|--------------|-------------------------------|---------------------------------|
+| python     | 5040 | `/`          | `python src/main_task.py`     | `uvicorn src.main_server:app …` |
+| golang     | 5040 | `/app/build` | `env /app/build/task`         | `env /app/build/server`         |
+| typescript | 5040 | `/app`       | `node build/src/main_task.js` | `node build/src/main_server.js` |
+| cpp        | 5040 | `/app/build` | `env /app/build/main`         | `env /app/build/main`           |
+| nextjs     | 3000 | `/app`       | `node server.mjs`             | `node server.mjs`               |
+| elixir     | 4000 | `/app`       | `/app/bin/example start`      | `/app/bin/example start`        |
 
 Each matches that language's Dockerfile — where it leaves its build output,
 and what it `EXPOSE`s. `{{CONTAINER_PORT}}` reaches three places that have to
@@ -264,7 +272,7 @@ The lambda target needs only one of these: `{{CONTAINER_CMD_LAMBDA}}`, the
 handler. Every AWS Lambda base image — python, nodejs and provided alike —
 ships the same `/lambda-entrypoint.sh` and `/var/task`, so those stay literal.
 The handler is `src.main_lambda.lambda_handler_1` for python,
-`src/lambda.handler` for nextjs, and `bootstrap` for the three custom-runtime
+`build/src/main_lambda.handler` for typescript, and `bootstrap` for the three custom-runtime
 languages.
 
 ### Why Dockerfiles live in each language folder
@@ -514,6 +522,7 @@ the target Dockerfiles run, so debugging matches deployment:
 | golang | Run `src`, Unit tests |
 | cpp | Run `build/cpp_sample` (build first with CMake) |
 | nextjs | Server (`server.mjs`), Next dev server |
+| typescript | Debug current entrypoint, Task, Server, Unit tests |
 | elixir | Run the application (`mix run --no-halt`), Unit tests |
 
 All three configurations — dev, service and lambda — carry the same
@@ -616,8 +625,9 @@ target's `deployment.yaml` sends, minus the CloudFormation quoting.
 |---|---|---|---|---|
 | python | `python` / `uvicorn` | `src/main_task.py` | `src.main_server:app --host 0.0.0.0 --port <port>` | `src.main_lambda.lambda_handler_1` |
 | golang | `/usr/bin/env` | `/app/build/task` | `/app/build/server` | `bootstrap` |
+| typescript | `node` | `build/src/main_task.js` | `build/src/main_server.js` | `build/src/main_lambda.handler` |
 | cpp | `/usr/bin/env` | `/app/build/main` | `/app/build/main` | `bootstrap` |
-| nextjs | `node` | `server.mjs` | `server.mjs` | `src/lambda.handler` |
+| nextjs | `node` | `server.mjs` | `server.mjs` | — (no lambda target) |
 | elixir | `/app/bin/<release>` | `start` | `start` | `bootstrap` |
 
 Go and C++ go through `/usr/bin/env` because the ECS module splits the command
@@ -715,12 +725,21 @@ what to merge by hand, what never to touch — worked through with
    `make local-dev-setup` works in the generated project.
    The base-image case block also sets `container_workdir` and the four
    entrypoint/cmd values — they must match that language's Dockerfile.
-5. Add a case to the "Next steps" switch at the bottom of `make/bootstrap.sh`.
-6. Write a short `<language>/README.md` describing what's inside.
+5. Set `lint_tool`, `lint_command` and `lint_install` in the same case block,
+   so `make lint` has something to run. Set `supported_targets` too if the
+   layer cannot serve all three — anything not listed is deleted after the
+   overlay rather than shipped broken.
+6. Add a case to the "Next steps" switch at the bottom of `make/bootstrap.sh`.
+7. Add any manifest the Dockerfiles `COPY` to `_base/.dockerignore`, which
+   ignores everything by default — a missing entry fails the build at the
+   `COPY` line with nothing but "not found".
+8. Write a short `<language>/LAYER.md` describing what's inside. It is excluded
+   from the rsync, so it documents the layer without shipping to projects.
 
 ## Notes on the originals
 
-The five source templates this consolidates:
+The five source templates this consolidates (the `typescript/` layer was
+written for this template rather than adapted from one):
 
 | Source                                   | Used for                                                         |
 |------------------------------------------|------------------------------------------------------------------|

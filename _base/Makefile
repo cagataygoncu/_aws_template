@@ -7,6 +7,7 @@
 #   make local-dev-setup               create/update ./venv from environment.yaml
 #   make template-version [version]     nested gig-cfn-templates release
 #   make info          [target]
+#   make lint                          source + cfn-lint over every template
 #   make validate      [target]
 #   make config        [target]        where the env file is read from, is it there
 #   make sync-config   [target]        put it where the deployment reads it
@@ -115,7 +116,7 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help local-dev-setup info targets template-version aws-info validate config sync-config deploy-cicd remote push pipeline \
+.PHONY: help local-dev-setup info targets template-version aws-info lint validate config sync-config deploy-cicd remote push pipeline \
         pipeline-stop upload outputs output-value url events logs delete-stack \
         delete-cicd delete-all local-build local-run invoke local-logs shell stop
 
@@ -126,6 +127,7 @@ targets:       ; @$(COMMANDS) targets
 template-version: ; @$(COMMANDS) template-version $(ARGS)
 aws-info:      ; @$(COMMANDS) aws-info
 
+lint:          ; @$(COMMANDS) lint
 validate:      ; @$(COMMANDS) validate      $(ARGS)
 config:        ; @$(COMMANDS) config        $(ARGS)
 sync-config:   ; @$(COMMANDS) sync-config   $(ARGS)

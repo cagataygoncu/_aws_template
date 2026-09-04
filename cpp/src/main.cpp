@@ -1,12 +1,16 @@
-// Mirrors the Python and Go stubs: one processRequest() that every target
+// Mirrors the Python and Go stubs: one process_request() that every target
 // funnels into, so the behaviour is the same however this is deployed.
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <string>
-#include <algorithm>
+
+#include <openssl/evp.h>
 
 namespace {
 
@@ -37,24 +41,6 @@ Mode get_mode() {
     return Mode::Online;
 }
 
-// Whatever the request handler needs that comes from outside it. Online it
-// comes from the environment the deployment sets - container_config.env for
-// ECS - and this is where a call to Secrets Manager or Parameter Store
-// belongs. Locally it is filled in with values that need no AWS account.
-struct Config {
-    std::string service_name;
-    std::string environment;
-};
-
-Config load_config(Mode mode) {
-    if (mode == Mode::Local) {
-        return Config{"local", "dev"};
-    }
-    // Add the AWS lookups this service needs here. The task role already has
-    // the permissions; nothing needs credentials.
-    return Config{env_or("SERVICE_NAME"), env_or("ENVIRONMENT")};
-}
-
 std::string to_string(const std::map<std::string, std::string>& fields) {
     std::string out = "{";
     for (auto it = fields.begin(); it != fields.end(); ++it) {
@@ -66,26 +52,48 @@ std::string to_string(const std::map<std::string, std::string>& fields) {
     return out + "}";
 }
 
+// f1 mirrors lib/package_a/module_x.py in the Python layer: the one piece of
+// work the template does, so there is something to replace with the real
+// thing.
+std::string f1(const std::map<std::string, std::string>& input) {
+    const std::string rendered = to_string(input);
+
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int length = 0;
+
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(context, EVP_sha256(), nullptr);
+    EVP_DigestUpdate(context, rendered.data(), rendered.size());
+    EVP_DigestFinal_ex(context, digest, &length);
+    EVP_MD_CTX_free(context);
+
+    std::ostringstream out;
+    out << std::hex << std::setfill('0');
+    for (unsigned int i = 0; i < length; ++i) {
+        out << std::setw(2) << static_cast<int>(digest[i]);
+    }
+    return out.str();
+}
+
 }  // namespace
 
-std::map<std::string, std::string> process_request(const std::string& event_data, Mode mode) {
-    const Config config = load_config(mode);
+std::string process_request(const std::string& event_data, Mode mode) {
+    if (mode == Mode::Online) {
+        // Where the AWS lookups belong: anything that must not sit in the
+        // environment file - endpoints, credentials, keys - comes from
+        // Secrets Manager, read with the task role. The Python and Go layers
+        // do this through gig_utils; this one has no AWS SDK linked yet, so
+        // the call goes here when the service needs one. Log that a secret
+        // was read, never what it contained.
+        std::clog << "main: online - add the Secrets Manager read here\n";
+    }
 
-    const std::map<std::string, std::string> input{
-        {"event_data", event_data},
-        {"mode", mode == Mode::Local ? "local" : "online"},
-    };
+    const std::map<std::string, std::string> input{{"event_data", event_data}};
     std::clog << "main: input: " << to_string(input) << "\n";
 
-    const std::map<std::string, std::string> output{
-        {"service", config.service_name},
-        {"env", config.environment},
-        {"echo", event_data},
-        {"length", std::to_string(event_data.size())},
-    };
-    std::clog << "main: output: " << to_string(output)
-              << " for input: " << to_string(input) << "\n";
+    const std::string output = f1(input);
 
+    std::clog << "main: output: " << output << " for input: " << to_string(input) << "\n";
     return output;
 }
 
@@ -99,6 +107,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout << to_string(process_request(event_data, get_mode())) << "\n";
+    std::cout << process_request(event_data, get_mode()) << "\n";
     return 0;
 }

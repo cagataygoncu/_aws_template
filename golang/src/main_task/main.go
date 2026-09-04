@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -26,9 +25,5 @@ func main() {
 		log.Fatalf("ProcessRequest: %v", err)
 	}
 
-	encoded, err := json.Marshal(output)
-	if err != nil {
-		log.Fatalf("marshal output: %v", err)
-	}
-	fmt.Println(string(encoded))
+	fmt.Println(output)
 }

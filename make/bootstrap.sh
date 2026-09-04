@@ -4,7 +4,7 @@
 # Usage:
 #     ./make/bootstrap.sh <language> <project_name> [destination_dir]
 #
-# <language>      one of: python | golang | cpp | nextjs | elixir
+# <language>      one of: python | golang | typescript | cpp | nextjs | elixir
 # <project_name>  snake_case (e.g. my_cool_service)
 # [destination_dir]  optional; defaults to ../<project_name> relative to this script
 #
@@ -23,7 +23,7 @@ if [[ $# -lt 2 || $# -gt 3 ]]; then
     cat >&2 <<EOF
 Usage: $(basename "$0") <language> <project_name> [destination_dir]
 
-  language        python | golang | cpp | nextjs | elixir
+  language        python | golang | typescript | cpp | nextjs | elixir
   project_name    snake_case (e.g. my_cool_service)
   destination_dir optional; defaults to ../<project_name>
 EOF
@@ -40,7 +40,7 @@ destination_dir=${3:-"$(dirname "$template_dir")/$project_name"}
 
 # ---- validation ---------------------------------------------------------
 
-valid_languages=(python golang cpp nextjs elixir)
+valid_languages=(python golang typescript cpp nextjs elixir)
 language_ok=false
 for lang in "${valid_languages[@]}"; do
     if [[ "$language" == "$lang" ]]; then
@@ -85,6 +85,12 @@ language_dir="$template_dir/$language"
 # reference a CloudFormation parameter - an unnecessary !Sub is a cfn-lint
 # warning. \${ContainerPort} is escaped so the shell leaves it for CFN.
 
+# Which deployment targets this language layer can actually serve. Anything
+# not listed is deleted after the overlay rather than shipped broken: a target
+# directory that cannot build is worse than a missing one, because it looks
+# deployable until the pipeline fails. Overridden per language below.
+supported_targets="lambda service/task service/server"
+
 case "$language" in
     python)
         language_version="${LANGUAGE_VERSION:-3.12}"
@@ -106,6 +112,11 @@ case "$language" in
         run_entrypoint_server="uvicorn"
         run_cmd_server="src.main_server:app --host 0.0.0.0 --port ${container_port}"
         run_cmd_lambda="src.main_lambda.lambda_handler_1"
+        # `make lint` - the static checks this language runs before a
+        # build. Empty would mean the project has no linter.
+        lint_tool="ruff"
+        lint_command="ruff check . && ruff format --check ."
+        lint_install="pip install ruff, or conda install -c conda-forge ruff"
         ;;
     golang)
         # 1.26 is the floor: aws-lambda-go v1.55 and gopls both require it.
@@ -133,6 +144,13 @@ case "$language" in
         run_entrypoint_server="/usr/bin/env"
         run_cmd_server="/app/build/server"
         run_cmd_lambda="bootstrap"
+        # `make lint` - the static checks this language runs before a
+        # build. Empty would mean the project has no linter.
+        lint_tool="go"
+        # gofmt -l exits 0 whatever it finds, so the grep is what fails the
+        # command - and it still prints which files need formatting.
+        lint_command="go vet ./... && ! gofmt -l src tests | grep ."
+        lint_install="the Go toolchain is the linter here - install Go, or open the devcontainer"
         ;;
     cpp)
         # No single toolchain version: the images are named by distro release.
@@ -154,6 +172,42 @@ case "$language" in
         run_entrypoint_server="/usr/bin/env"
         run_cmd_server="/app/build/main"
         run_cmd_lambda="bootstrap"
+        # `make lint` - the static checks this language runs before a
+        # build. Empty would mean the project has no linter.
+        lint_tool="clang-format"
+        # \$( ) escaped so bootstrap writes the substitution out rather than
+        # running it here, where there is no src/ to find.
+        lint_command="clang-format --dry-run --Werror \$(find src tests -name '*.cpp' -o -name '*.hpp' -o -name '*.h')"
+        lint_install="apt-get install clang-format, or brew install clang-format"
+        ;;
+    typescript)
+        language_version="${LANGUAGE_VERSION:-22}"
+        base_image_lambda="public.ecr.aws/lambda/nodejs:${language_version}"
+        base_image_service="public.ecr.aws/docker/library/node:${language_version}-bookworm-slim"
+        # tsc keeps the source tree under build/, so src/main_task.ts becomes
+        # build/src/main_task.js - the path the images run.
+        container_cmd_lambda="build/src/main_lambda.handler"
+        container_port="5040"
+        container_workdir="/app"
+        container_entrypoint_task="node"
+        container_cmd_task="'build/src/main_task.js'"
+        container_entrypoint_server="node"
+        container_cmd_server="'build/src/main_server.js'"
+        # Shell-ready twins of the container_* values above, for the README's
+        # `make local-run` examples: those carry CloudFormation quoting, and python's
+        # server value is a !Sub expression, so neither can be pasted.
+        run_entrypoint_task="node"
+        run_cmd_task="build/src/main_task.js"
+        run_entrypoint_server="node"
+        run_cmd_server="build/src/main_server.js"
+        run_cmd_lambda="build/src/main_lambda.handler"
+        # `make lint` - the static checks this language runs before a
+        # build. Empty would mean the project has no linter.
+        lint_tool="npx"
+        # Types first: eslint checks style, not types, and a type error is the
+        # one that stops the build.
+        lint_command="npx tsc --noEmit && npx eslint ."
+        lint_install="install Node, or open the devcontainer"
         ;;
     nextjs)
         language_version="${LANGUAGE_VERSION:-20}"
@@ -174,6 +228,18 @@ case "$language" in
         run_entrypoint_server="node"
         run_cmd_server="server.mjs"
         run_cmd_lambda="src/lambda.handler"
+        # `make lint` - the static checks this language runs before a
+        # build. Empty would mean the project has no linter.
+        # A Next.js app is a server. The lambda target existed but never
+        # worked - its Dockerfile ran src/lambda.handler, and no such file was
+        # ever built - so the layer does not offer it.
+        supported_targets="service/task service/server"
+        lint_tool="npx"
+        # tsc first: next lint checks style, not types, and a type error is the
+        # one that stops the build. .eslintrc.json ships with the layer so
+        # next lint does not stop to ask how to configure itself.
+        lint_command="npx tsc --noEmit && npm run lint"
+        lint_install="install Node, or open the devcontainer"
         ;;
     elixir)
         language_version="${LANGUAGE_VERSION:-1.19}"
@@ -196,6 +262,11 @@ case "$language" in
         run_entrypoint_server="/app/bin/${project_name}"
         run_cmd_server="start"
         run_cmd_lambda="bootstrap"
+        # `make lint` - the static checks this language runs before a
+        # build. Empty would mean the project has no linter.
+        lint_tool="mix"
+        lint_command="mix format --check-formatted && mix compile --warnings-as-errors"
+        lint_install="install Elixir, or open the devcontainer"
         ;;
 esac
 
@@ -248,10 +319,45 @@ rsync -a "${rsync_excludes[@]}" "$base_dir/" "$destination_dir/"
 echo ">>> Overlaying $language/ -> destination"
 rsync -a "${rsync_excludes[@]}" "$language_dir/" "$destination_dir/"
 
+# ---- targets this language cannot serve ---------------------------------
+# _base ships all three, so anything the layer does not support is removed
+# here rather than left to fail at deploy time.
+for target in lambda service/task service/server; do
+    case " $supported_targets " in
+        *" $target "*) continue ;;
+    esac
+    if [[ -d "$destination_dir/targets/$target" ]]; then
+        rm -rf "${destination_dir:?}/targets/$target"
+        echo "    removed targets/$target - not supported by the $language layer"
+    fi
+    # The devcontainer variant that builds that target's image goes with it.
+    if [[ "$target" == lambda && -d "$destination_dir/.devcontainer/lambda" ]]; then
+        rm -rf "${destination_dir:?}/.devcontainer/lambda"
+        echo "    removed .devcontainer/lambda"
+    fi
+done
+
+# service/ holds only the Dockerfile the two service targets share, so it goes
+# once both of them have.
+if [[ -d "$destination_dir/targets/service" ]] \
+    && [[ -z "$(find "$destination_dir/targets/service" -name cicd_parameters.json)" ]]; then
+    rm -rf "${destination_dir:?}/targets/service"
+    echo "    removed targets/service - no service target left to use it"
+fi
+
 # ---- placeholder substitution -------------------------------------------
 # Replace a few obvious placeholders in text files. Conservative: only
 # touches files that contain the exact tokens; portable sed across macOS
 # and Linux by writing to a temp file.
+
+# Escape a value so sed treats it as literal replacement text. Two characters
+# bite here: & means "the whole match", so the && in a lint command would
+# expand to the placeholder twice, and | is the delimiter these expressions
+# use, so a pipe ends the s/// early and sed dies with "unterminated `s'
+# command". A backslash escapes both, and itself.
+sed_replacement() {
+    printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
+}
 
 substitute_in_file() {
     local file=$1
@@ -277,12 +383,19 @@ substitute_in_file() {
         -e "s|{{RUN_ENTRYPOINT_SERVER}}|$run_entrypoint_server|g" \
         -e "s|{{RUN_CMD_SERVER}}|$run_cmd_server|g" \
         -e "s|{{RUN_CMD_LAMBDA}}|$run_cmd_lambda|g" \
-        "$file" > "$tmp" && mv "$tmp" "$file"
+        -e "s|{{LINT_TOOL}}|$(sed_replacement "$lint_tool")|g" \
+        -e "s|{{LINT_COMMAND}}|$(sed_replacement "$lint_command")|g" \
+        -e "s|{{LINT_INSTALL}}|$(sed_replacement "$lint_install")|g" \
+        "$file" > "$tmp" && cat "$tmp" > "$file"
+    # cat back into the original rather than mv over it: mv gives the file
+    # mktemp's 0600, which silently stripped the executable bit from
+    # make/commands.sh in every project this ever bootstrapped.
+    rm -f "$tmp"
 }
 
 echo ">>> Substituting placeholders (project name, language, images, entrypoints)"
 while IFS= read -r -d '' file; do
-    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|LANGUAGE_VERSION|OTP_VERSION|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+)\}\}' "$file" 2>/dev/null; then
+    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|LANGUAGE_VERSION|OTP_VERSION|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+)\}\}' "$file" 2>/dev/null; then
         substitute_in_file "$file"
     fi
 done < <(find "$destination_dir" -type f \
@@ -312,6 +425,9 @@ case "$language" in
         ;;
     cpp)
         echo "    cmake -S . -B build && cmake --build build"
+        ;;
+    typescript)
+        echo "    npm install && npm run build && npm test"
         ;;
     nextjs)
         echo "    npm install && npm run dev"
