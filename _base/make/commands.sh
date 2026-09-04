@@ -2100,10 +2100,25 @@ local docker
   local-stop
 
 Defaults: PROJECT_NAME=${PROJECT_NAME} TARGET=${TARGET} AWS_PROFILE=${AWS_PROFILE}
-Override any of them in the environment, or edit the Makefile for the project.
+Declared in project.env. Override any of them for a single run.
 
-  PROJECT_NAME=lambda-test-1 ./make/commands.sh deploy-cicd lambda
-  ./make/commands.sh local-run uvicorn "src.main_server:app --host 0.0.0.0 --port 8080" service/server
+  PROJECT_NAME=lambda-test-1 make deploy-cicd lambda
+
+RUN_ENV is the environment the container's own code reads - the container gets
+only the AWS variables otherwise. It REPLACES the default (currently
+"${RUN_ENV:-<unset>}"), so keep anything you still need:
+
+  make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" \\
+      RUN_ENV="MODE=local SECRET_NAME=my-service-settings"
+
+A service with no local mode needs whatever it actually reads at startup,
+MODE included or not:
+
+  make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" \\
+      RUN_ENV="SECRET_NAME=my-service-api-keys LOG_LEVEL=debug"
+
+It is a space-separated KEY=VALUE list; a value containing spaces needs
+docker run by hand.
 EOF
 }
 

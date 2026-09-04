@@ -536,12 +536,16 @@ make invoke JSON='{"test": 1}'
 
 # anything the code reads itself goes in RUN_ENV, which REPLACES the default
 # MODE=local - so keep MODE= in whatever you pass
-make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task \
+make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=task \
     RUN_ENV="MODE=local SECRET_NAME=my-settings DEBUG=1"
 
 # the online path, against the real services it needs
-make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task \
+make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=task \
     RUN_ENV="MODE=online SECRET_NAME=my-settings"
+
+# a service with no local mode: give it what it actually reads at startup
+make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" TARGET=server \
+    RUN_ENV="SECRET_NAME=my-service-api-keys LOG_LEVEL=debug"
 
 make local-logs
 make shell
@@ -565,20 +569,48 @@ ERROR: no ENTRYPOINT and no CMD - the image would run its own default ...
     make local-run ENTRYPOINT="/lambda-entrypoint.sh" CMD="{{RUN_CMD_LAMBDA}}" TARGET=lambda
 ```
 
-The container gets only the AWS variables by default — `AWS_PROFILE`,
+### RUN_ENV
+
+The container starts with the AWS variables and nothing else — `AWS_PROFILE`,
 `AWS_REGION` and a read-only mount of `~/.aws`, so no credentials end up in its
 environment. Everything the code reads itself goes in `RUN_ENV`, a
 space-separated `KEY=VALUE` list. A value containing spaces needs `docker run`
 by hand.
 
-`make info` prints the `RUN_ENV` a bare `make local-run` would use, so what the
-container gets is visible without reading the Makefile.
+**It replaces the default rather than adding to it.** The Makefile sets
+`RUN_ENV ?= MODE=local`, which is what lets a local run work with no
+AWS-backed services: the code reads `MODE` and defaults to `online`, so
+deployed code sets nothing and runs online while `make local-run` opts out.
+Pass your own `RUN_ENV` and `MODE=local` is gone unless you repeat it.
 
-`RUN_ENV` defaults to `MODE=local` in the Makefile, which is what makes a local
-run work with no AWS-backed services: the code reads `MODE` and defaults to
-`online`, so deployed code sets nothing and runs online while `make local-run` opts
-out. To exercise the online path locally, pass what it needs —
-`RUN_ENV="MODE=online SECRET_NAME=my-settings"`.
+`make info` prints the `RUN_ENV` a bare `make local-run` would use, and
+`make help` shows the current default in its examples, so what the container
+gets is visible without reading the Makefile.
+
+Not every service has a local mode. One that reads its configuration at
+startup and refuses to serve without it needs those values passed, `MODE` or
+no `MODE` — this is the shape of failure when they are missing:
+
+```
+tournament-simulator-local exited (1) - nothing is listening on 8080
+
+    INF Environment variables LOG_LEVEL= SECRET_NAME=
+    ERR Failed to start server error="SECRET_NAME is not set"
+```
+
+The container ran, logged what it was given, and stopped. `make local-run`
+prints the exit code and the last lines of the log for exactly this reason:
+
+```zsh
+make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" \
+    RUN_ENV="SECRET_NAME=my-service-api-keys"
+```
+
+The values the *deployed* container gets are in `container_config.env`, which
+is uploaded to S3 and read by ECS — `make local-run` does not load it. When a
+local run needs the same environment, copy the values into `RUN_ENV`.
+
+### Build platform
 
 `make local-build` builds for the platform the pipeline builds for, not the one your
 laptop runs. It reads `CodeBuildImage` from the target's
