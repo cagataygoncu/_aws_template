@@ -51,7 +51,7 @@ curl -L "https://raw.githubusercontent.com/scop/bash-completion/refs/heads/main/
     -o /etc/bash_completion
 
 # Docker CLI only - no daemon in here. It talks to the host's daemon through
-# the mounted socket, so `make build` / `make run` work inside the container.
+# the mounted socket, so `make local-build` / `make local-run` work inside the container.
 # A build context is streamed to the daemon, but `docker run -v` paths are
 # resolved on the host: that is what AWS_CONFIG_HOST_DIR is for.
 if command -v docker > /dev/null 2>&1; then

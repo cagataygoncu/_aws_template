@@ -4,7 +4,6 @@ from enum import Enum
 
 from gig_utils_core.logger_config import get_logger
 from gig_utils_security.secrets import get_secret_value
-from gig_utils_storage.cache import get_cache
 
 from lib.package_a import module_x
 
@@ -18,8 +17,8 @@ def get_mode():
     """Deployed code is online; a local run opts out with MODE=local.
 
     Online is the default so that nothing has to be set on AWS, and forgetting
-    to set it locally fails loudly on the first AWS call rather than silently
-    using the in-memory cache in production.
+    to set it locally fails loudly on the first AWS call rather than quietly
+    skipping it in production.
     """
     return Mode(os.getenv("MODE", Mode.ONLINE.value).lower())
 
@@ -31,17 +30,18 @@ def process_request(event_data, mode=None):
     mode = mode or get_mode()
 
     if mode == Mode.ONLINE:
+        # What this template demonstrates about gig_utils: anything that must
+        # not sit in the environment file - endpoints, credentials, keys -
+        # comes from Secrets Manager, read with the task role. Log that it was
+        # read, never what it contained.
         secret_name = os.getenv("SECRET_NAME")
-        redis_config = get_secret_value(secret_name)
-        redis_config_json = json.loads(redis_config)
-        cache = get_cache(redis_config_json, reader_only=False)
-    else:
-        cache = get_cache()  # use defaultdict for local testing
+        settings = json.loads(get_secret_value(secret_name))
+        logger.info(f"read {len(settings)} settings from {secret_name}")
 
     input = {"event_data": event_data}
     logger.info(f"input: {input}")
 
-    output = module_x.f1(cache, input)
+    output = module_x.f1(input)
 
     logger.info(f"output: {output} for input: {input}")
 

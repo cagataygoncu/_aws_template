@@ -2,7 +2,7 @@
 # check=skip=InvalidDefaultArgInFrom
 #
 # BASE_IMAGE_URI has no default on purpose: the image comes from the
-# target's cicd_parameters.json, passed in by `make build` and by the
+# target's cicd_parameters.json, passed in by `make local-build` and by the
 # pipeline's buildspec. Skipping the lint keeps that one source of truth.
 ARG BASE_IMAGE_URI
 

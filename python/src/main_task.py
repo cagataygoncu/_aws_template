@@ -13,7 +13,7 @@ if __name__ == "__main__":
     # The outer one catches anything that goes wrong before or around the loop
     # - a missing environment variable, a failed client construction - logs the
     # traceback and exits non-zero. Without it the container dies with only a
-    # bare stack trace on stderr, or nothing at all, and `make run` can report
+    # bare stack trace on stderr, or nothing at all, and `make local-run` can report
     # no more than "exited (1)".
     try:
         logger.info("main_task starting")

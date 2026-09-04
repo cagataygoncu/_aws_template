@@ -44,10 +44,10 @@ root, where the script's relative paths resolve).
 ```zsh
 make info                      # what every command is about to act on
 make config                    # is the environment file where ECS expects it?
-make config-upload             # put it there - nothing else will
+make sync-config             # put it there - nothing else will
 
-make build                     # the image the pipeline builds, same platform
-make run ENTRYPOINT=... CMD="..."   # run it locally, MODE=local
+make local-build                     # the image the pipeline builds, same platform
+make local-run ENTRYPOINT=... CMD="..."   # run it locally, MODE=local
 make local-logs                # follow what it is doing
 make stop
 
@@ -86,17 +86,23 @@ A *target* is the path under `targets/` holding a `cicd_parameters.json`:
 `lambda`, `service/task` (no load balancer) or `service/server` (behind an ALB,
 with a domain). `make targets` lists the ones this project still has.
 
+The last segment on its own is enough — `lambda`, `task`, `server` — since
+nothing else under `targets/` shares those names. The nesting only exists
+because the two service targets share one Dockerfile; it is not something you
+need to type. A name that matched two targets would be reported rather than
+guessed at.
+
 `TARGET` in `project.env` selects the one this project deploys; pass one
 positionally to override for a single run:
 
 ```zsh
-make build                     # uses $(TARGET)
-make build lambda              # just this once
+make local-build                     # uses $(TARGET)
+make local-build lambda              # just this once
 ```
 
 Per-target facts — the deployment template, the Dockerfile, the base image, the
 CodeBuild image — all come from that target's `cicd_parameters.json`, so a
-local `make build` and the pipeline's build cannot drift apart.
+local `make local-build` and the pipeline's build cannot drift apart.
 
 ## Nothing is guessed
 
@@ -113,7 +119,7 @@ CONFIG_FILE_NAME=container_config.env
 
 Everything the *deployment* takes lives in the target's
 `deployment_parameters.json` instead — including `ContainerPort`, so the port
-`make run` publishes to and the port the deployment sends are the same value,
+`make local-run` publishes to and the port the deployment sends are the same value,
 read from the same place.
 
 Both the `Makefile` and `make/commands.sh` read that one file, so
@@ -132,7 +138,7 @@ An override on the command line still wins, for a one-off:
 
 ```zsh
 make deploy-cicd PROJECT_NAME=lambda-test-1
-TARGET=lambda make build
+TARGET=lambda make local-build
 ```
 
 `make push` takes the branch explicitly, because it pushes to the remote's
@@ -147,7 +153,7 @@ is **not** in the image, and neither the build nor the pipeline uploads it:
 
 ```zsh
 make config                    # where it is read from, and whether it is there
-make config-upload             # upload it, and again whenever it changes
+make sync-config             # upload it, and again whenever it changes
 ```
 
 `make deploy-cicd` refuses to run when that object is missing, because a
@@ -158,13 +164,16 @@ It is configuration, never secrets. Put those in Secrets Manager and read them
 with the task role.
 
 The `lambda` target uses the same file, by a different route: Lambda has no S3
-environment file — that is an ECS task-definition feature — so
-`make config-upload lambda` writes the same values into the
-`EnvironmentVariables` default of `targets/lambda/deployment.yaml`, which the
-module expands into the function's `Environment.Variables`. That is a change to
-the repository rather than to a bucket, so **commit and push it** for the
-pipeline to deploy it. `make config lambda` reports whether the two are in
-step.
+environment file — that is an ECS task-definition feature — so `make
+sync-config` writes the same values into the `EnvironmentVariables` parameter
+in `targets/lambda/deployment_parameters.json`, which the module expands into
+the function's `Environment.Variables`. That is a change to the repository
+rather than to a bucket, so **commit and push it** — the deployed function
+keeps its old environment until the pipeline runs. `make config` reports
+whether the two are in step.
+
+Both read `TARGET` from `project.env`, so neither needs the target spelled out;
+pass one positionally only to act on a target this project is not set to.
 
 ## Develop in the devcontainer
 
@@ -181,7 +190,7 @@ exist so you can see what actually ships; every dev tool added to them is one
 more difference between what you test and what deploys.
 
 You usually do not need to open them at all — the root container has the Docker
-socket mounted, so `make build`, `make run`, `make invoke` and `make shell`
+socket mounted, so `make local-build`, `make local-run`, `make invoke` and `make shell`
 drive the real image from inside it. Open a target variant when you want to sit
 inside the deployed image and look around: what got baked in, a missing CA
 certificate, whether the environment file landed.
@@ -201,8 +210,8 @@ mounts `$AWS_CONFIG_HOST_DIR` (set by `devcontainer.json` to the host's
 path the host cannot see.
 
 F5 runs `.vscode/launch.json` against the same entry points the target images
-run, with `MODE=local` so a debug session uses the in-memory cache instead of
-Secrets Manager — the same thing `RUN_ENV` does for `make run`.
+run, with `MODE=local` so a debug session skips the Secrets Manager read —
+the same thing `RUN_ENV` does for `make local-run`.
 
 The devcontainer image is **not** pinned to a platform: it follows the host, so
 it is native on both an Apple Silicon laptop and an x86_64 builder. Debuggers
@@ -213,7 +222,7 @@ images still build for the platform the pipeline builds for.
 
 `Your authorization token has expired` — an ECR Public login token lasts 12
 hours, and docker keeps presenting an expired one instead of falling back to an
-anonymous pull. `.devcontainer/init.sh` and `make build` both refresh it now;
+anonymous pull. `.devcontainer/init.sh` and `make local-build` both refresh it now;
 by hand it is:
 
 ```zsh
@@ -276,7 +285,7 @@ pipeline).
 
 ```zsh
 make validate                  # cicd.yaml + the target's deployment.yaml
-make config-upload             # once, and whenever the env file changes
+make sync-config             # once, and whenever the env file changes
 make deploy-cicd               # create/update the pipeline, wire the git remote
 make push <branch>             # push it to CodeCommit main, starting the pipeline
 make pipeline                  # stage states
@@ -339,7 +348,7 @@ stack, so anything else has to be set in the target's `deployment.yaml`:
   CloudFormation refuses the deploy until you set it.
 - **`HostedZoneId`** — likewise, and likewise no default.
 - **The environment file** — the path follows `ProjectName`, so the object at
-  the *new* path does not exist yet. `make config-upload` puts it there;
+  the *new* path does not exist yet. `make sync-config` puts it there;
   `make deploy-cicd` refuses to run until it is.
 
 `ServiceName` needs no change: every resource built from it is prefixed with
@@ -363,7 +372,7 @@ git checkout -b modernise
 
 make info                      # read every name before creating anything
 make validate                  # templates, and what still has no default
-make config-upload             # the environment file, at the NEW path
+make sync-config             # the environment file, at the NEW path
 
 make deploy-cicd               # creates my-service-v2-cicd, adds the git remote
 make push modernise            # to the new remote only - see below
@@ -434,6 +443,7 @@ project. Take it from the stack rather than assembling it:
 FUNCTION=$(make output-value LambdaFunctionName)
 
 aws lambda invoke --function-name "$FUNCTION" \
+    --cli-read-timeout 0 \
     --cli-binary-format raw-in-base64-out \
     --payload '{"test": 1}' \
     /dev/stdout
@@ -441,6 +451,23 @@ aws lambda invoke --function-name "$FUNCTION" \
 
 That is the direct API call and it uses your `AWS_PROFILE`, so it is the one to
 reach for first.
+
+**`--cli-read-timeout 0` is not optional.** `invoke` is synchronous and blocks
+for as long as the function runs, up to its `Timeout` (900s by default here).
+The CLI's own read timeout is 60s and it *retries* on expiry, so a function
+that takes longer than a minute looks like a hang and is silently invoked
+again. `0` disables the timeout; `make logs` in another terminal shows what it
+is actually doing.
+
+To hand it off and not wait at all:
+
+```zsh
+aws lambda invoke --function-name "$FUNCTION" --invocation-type Event \
+    --cli-binary-format raw-in-base64-out --payload '{"test": 1}' /dev/null
+```
+
+A first invoke is also slower than the rest: a cold start pulls the image, and
+a VPC-attached function attaches an ENI before any of your code runs.
 
 The function URL is a second route, and it is **`AuthType: AWS_IAM`** — a plain
 `curl` gets 403. It has to be SigV4-signed, so send credentials with it:
@@ -484,23 +511,23 @@ container's environment.
 
 ```zsh
 # task
-make run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task
+make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task
 
-# server - the app binds {{CONTAINER_PORT}}; make run publishes it on 8080
-make run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" TARGET=service/server
+# server - the app binds {{CONTAINER_PORT}}; make local-run publishes it on 8080
+make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" TARGET=service/server
 open http://localhost:8080
 
 # lambda - the image entrypoint is kept on purpose, so the handler is the command
-make run ENTRYPOINT= CMD="{{RUN_CMD_LAMBDA}}" TARGET=lambda
+make local-run ENTRYPOINT= CMD="{{RUN_CMD_LAMBDA}}" TARGET=lambda
 make invoke JSON='{"test": 1}'
 
 # anything the code reads itself goes in RUN_ENV, which REPLACES the default
 # MODE=local - so keep MODE= in whatever you pass
-make run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task \
+make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task \
     RUN_ENV="MODE=local SECRET_NAME=my-settings DEBUG=1"
 
 # the online path, against the real services it needs
-make run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task \
+make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=service/task \
     RUN_ENV="MODE=online SECRET_NAME=my-settings"
 
 make local-logs
@@ -508,21 +535,21 @@ make shell
 make stop
 ```
 
-`make run` with neither is refused rather than guessed: the image's own default
+`make local-run` with neither is refused rather than guessed: the image's own default
 would run, and for a python image that is a bare `python3` which reads EOF,
 exits 0 and logs nothing — a broken run that looks like a successful one.
 
 The authoritative values are `ContainerEntryPoint` and `ContainerCmd` in the
 target's `deployment.yaml`. Those carry CloudFormation quoting, so drop the
-surrounding quotes when passing them here — or run `make run` with neither and
+surrounding quotes when passing them here — or run `make local-run` with neither and
 read them off the error, which prints the exact line for the target, port
 substituted:
 
 ```
-$ make run TARGET=lambda
+$ make local-run TARGET=lambda
 ERROR: no ENTRYPOINT and no CMD - the image would run its own default ...
   lambda deploys this, from targets/lambda/deployment.yaml:
-    make run ENTRYPOINT="/lambda-entrypoint.sh" CMD="src.main_lambda.lambda_handler_1" TARGET=lambda
+    make local-run ENTRYPOINT="/lambda-entrypoint.sh" CMD="src.main_lambda.lambda_handler_1" TARGET=lambda
 ```
 
 The container gets only the AWS variables by default — `AWS_PROFILE`,
@@ -531,16 +558,16 @@ environment. Everything the code reads itself goes in `RUN_ENV`, a
 space-separated `KEY=VALUE` list. A value containing spaces needs `docker run`
 by hand.
 
-`make info` prints the `RUN_ENV` a bare `make run` would use, so what the
+`make info` prints the `RUN_ENV` a bare `make local-run` would use, so what the
 container gets is visible without reading the Makefile.
 
 `RUN_ENV` defaults to `MODE=local` in the Makefile, which is what makes a local
 run work with no AWS-backed services: the code reads `MODE` and defaults to
-`online`, so deployed code sets nothing and runs online while `make run` opts
+`online`, so deployed code sets nothing and runs online while `make local-run` opts
 out. To exercise the online path locally, pass what it needs —
 `RUN_ENV="MODE=online SECRET_NAME=my-settings"`.
 
-`make build` builds for the platform the pipeline builds for, not the one your
+`make local-build` builds for the platform the pipeline builds for, not the one your
 laptop runs. It reads `CodeBuildImage` from the target's
 `cicd_parameters.json` — `amazonlinux2-x86_64-standard` gives `linux/amd64`, an
 `aarch64` CodeBuild image gives `linux/arm64`. That matters because the
@@ -553,7 +580,7 @@ Desktop's Rosetta option helps a lot. For a fast native build while iterating,
 override it, remembering the result is not what deploys:
 
 ```zsh
-make build BUILD_PLATFORM=linux/arm64
+make local-build BUILD_PLATFORM=linux/arm64
 ```
 
 `ENTRYPOINT`, `CMD`, `JSON` and `RUN_ENV` are make variables rather than

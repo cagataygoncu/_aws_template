@@ -31,7 +31,7 @@ def lambda_handler_1(event, context):
         ################################################################################################
         # YOUR CODE HERE
         # Online unless MODE=local is set - see get_mode() in src/main.py.
-        # Locally: make run ... RUN_ENV="MODE=local"
+        # Locally: make local-run ... RUN_ENV="MODE=local"
         output = process_request(event_data)
         ################################################################################################
 

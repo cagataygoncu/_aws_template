@@ -1,15 +1,10 @@
 import hashlib
 
-from gig_utils_storage.cache import get_cache_value, set_cache_value
 
-
-def f1(cache, input):
+def f1(input):
     """Returns the SHA-256 hash of the input."""
 
-    set_cache_value(cache, "HASH", "FIELD", "VALUE")
-    state = get_cache_value(cache, "HASH", "FIELD")
-
-    x = input | {"state": state}
+    x = input
     if isinstance(x, str):
         x = x.encode("utf-8")
     elif not isinstance(x, bytes):

@@ -86,7 +86,7 @@ REMOTE_DIR="${REMOTE_DIR:-}"
 TEMPLATE_BUCKET="${TEMPLATE_BUCKET:-gig-cfn-templates}"
 
 # The environment file ECS reads at task start. It lives in the repo, is NOT in
-# the image, and the pipeline never uploads it - `config-upload` does, and
+# the image, and the pipeline never uploads it - `sync-config` does, and
 # `config` says whether it is there.
 CONFIG_FILE_NAME="${CONFIG_FILE_NAME:-container_config.env}"
 
@@ -181,23 +181,44 @@ confirm() {
 
 # Print the parameters file of a deployment target, after checking it exists.
 # A target is the path under targets/ that holds a cicd_parameters.json:
-# lambda, service/task, service/server.
+# lambda, service/task, service/server. The last segment on its own also
+# works - `task` and `server` - since nothing else under targets/ is called
+# that, and the directory nesting is an implementation detail of which
+# Dockerfile they share rather than something worth typing.
 #
 #   parameters_file lambda            -> targets/lambda/cicd_parameters.json
 #   parameters_file service/server    -> targets/service/server/cicd_parameters.json
+#   parameters_file server            -> targets/service/server/cicd_parameters.json
 #
 parameters_file() {
     local target=$1
     local path="targets/${target}/cicd_parameters.json"
+    [[ -f "$path" ]] && { echo "$path"; return 0; }
 
-    if [[ ! -f "$path" ]]; then
-        echo "ERROR: unknown target '${target}'" >&2
-        echo "" >&2
-        echo "available targets:" >&2
-        targets >&2
+    # Not a path: try it as the last segment of one. Ambiguity is reported
+    # rather than resolved - picking one of two would be exactly the silent
+    # wrong-target mistake the explicit names exist to prevent.
+    local matches
+    matches=$(find targets -mindepth 2 -name cicd_parameters.json \
+        -path "*/${target}/cicd_parameters.json" 2>/dev/null | sort)
+
+    if [[ $(echo "$matches" | grep -c .) -eq 1 ]]; then
+        echo "$matches"
+        return 0
+    fi
+
+    if [[ -n "$matches" ]]; then
+        echo "ERROR: ambiguous target '${target}' - name it in full:" >&2
+        echo "$matches" | sed -e 's|^targets/||' -e 's|/cicd_parameters.json$||' \
+            -e 's|^|  - |' >&2
         exit 1
     fi
-    echo "$path"
+
+    echo "ERROR: unknown target '${target}'" >&2
+    echo "" >&2
+    echo "available targets:" >&2
+    targets >&2
+    exit 1
 }
 
 # Print one CloudFormation parameter value out of a target's parameters file.
@@ -464,7 +485,7 @@ deploy_cicd() {
     local config_object
     config_object=$(config_uri "$target")
     if [[ -n "$config_object" ]] && ! aws s3 ls "$config_object" > /dev/null 2>&1; then
-        die "ERROR: ${config_object} does not exist - the task will not start. Upload it first: make config-upload ${target}"
+        die "ERROR: ${config_object} does not exist - the task will not start. Upload it first: make sync-config ${target}"
     fi
 
     aws cloudformation deploy \
@@ -1359,11 +1380,90 @@ deployment_value() {
     template_default "$template" "$name"
 }
 
+# Seconds since a file was last modified, empty if there is no such file.
+# stat takes different flags on macOS and in the Linux devcontainers, and this
+# runs in both.
+file_age_seconds() {
+    local path=$1 mtime
+    [[ -f "$path" ]] || return 0
+    mtime=$(stat -f %m "$path" 2>/dev/null || stat -c %Y "$path" 2>/dev/null) || return 0
+    [[ -n "$mtime" ]] || return 0
+    echo $(( $(date +%s) - mtime ))
+}
+
+# An ECR Public login token lasts 12 hours, and docker keeps presenting an
+# expired one instead of falling back to an anonymous pull - the build then
+# fails on the FROM with "Your authorization token has expired". Refresh it,
+# or drop it so anonymous pulls resume. Never fatal: a build that does not pull
+# from ECR Public should not care.
+#
+# The refresh is a network round trip costing around three seconds, which was
+# most of what a fully cached rebuild took - the build itself is about one. So
+# it happens at most once per token lifetime, tracked by a stamp file. Losing
+# the stamp costs one extra refresh and never correctness; a token revoked
+# early still falls back to an anonymous pull.
+ECR_PUBLIC_LOGIN_MAX_AGE_SECONDS=$(( 11 * 3600 ))
+
+ecr_public_login() {
+    local stamp age
+    # Per profile: the token is issued against whichever credentials asked for
+    # it, so one profile's login says nothing about another's.
+    stamp="${TMPDIR:-/tmp}/.ecr-public-login-$(echo "$AWS_PROFILE" | tr -c 'A-Za-z0-9_.-' '_')"
+
+    age=$(file_age_seconds "$stamp")
+    if [[ -n "$age" ]] && (( age < ECR_PUBLIC_LOGIN_MAX_AGE_SECONDS )); then
+        echo "ecr public: token from $(( age / 60 ))m ago, still valid"
+        return 0
+    fi
+
+    if aws ecr-public get-login-password --region us-east-1 2>/dev/null \
+        | docker login --username AWS --password-stdin public.ecr.aws > /dev/null 2>&1; then
+        : > "$stamp"
+        echo "ecr public: token refreshed"
+    else
+        rm -f "$stamp"
+        echo "warning: could not refresh the ECR Public token - anonymous pull" >&2
+        docker logout public.ecr.aws > /dev/null 2>&1 || true
+    fi
+}
+
+# The local image tag for a target. One tag per target, not one per project:
+# with a shared :latest, building the lambda image silently replaced the
+# service one, leaving a dangling layer set and no way to tell from
+# `docker images` which target the survivor came from.
+#
+# Named from the resolved directory rather than what was typed, so `server`
+# and `service/server` tag the same image instead of building it twice.
+# Slashes are not legal in a tag, so service/task becomes service-task.
+#
+#   image_tag service/task    -> my-service:service-task
+#   image_tag task            -> my-service:service-task
+#
+image_tag() {
+    local target="${1:-$TARGET}" path
+    path=$(parameters_file "$target") || exit 1
+    path=${path#targets/}
+    path=${path%/cicd_parameters.json}
+    echo "${STACK_NAME}:${path//\//-}"
+}
+
+# The target project.env declares, as opposed to $TARGET which an invocation
+# may have overridden - the Makefile passes TARGET positionally either way, so
+# the two are always equal by the time a command sees them. Used to decide
+# whether a command printed back to the user has to name the target: for the
+# project's own target it does not, and printing it suggests it must be typed
+# every time.
+declared_target() {
+    [[ -f "$PROJECT_CONFIG" ]] || return 0
+    sed -n 's/^[[:space:]]*TARGET[[:space:]]*=[[:space:]]*//p' "$PROJECT_CONFIG" \
+        | head -1 | tr -d '[:space:]'
+}
+
 # The ContainerEntryPoint / ContainerCmd this target's deployment sends to its
 # nested stack. Unlike the values in deployment_parameters.json these are
 # written into the deployment template itself, so they are read from the line
 # rather than from a parameter - the CloudFormation quoting and the one !Sub
-# they use stripped off, leaving something that can be pasted into `make run`.
+# they use stripped off, leaving something that can be pasted into `make local-run`.
 #
 #   container_run_value lambda ContainerCmd   -> src.main_lambda.lambda_handler_1
 #
@@ -1418,7 +1518,7 @@ config() {
                 echo "status  in step"
             else
                 echo "status  DIFFERS from ${CONFIG_FILE_NAME}"
-                echo "        config-upload writes the local file into ${file},"
+                echo "        sync-config writes the local file into ${file},"
                 echo "        then commit and push it - the function is unchanged until"
                 echo "        the pipeline redeploys"
             fi
@@ -1439,19 +1539,19 @@ config() {
             echo "status  present remotely, but there is no local ${CONFIG_FILE_NAME}"
             echo "        set CONFIG_FILE_NAME in project.env to the file this project keeps"
         elif ! aws s3 cp "$uri" - 2>/dev/null | diff -q - "$CONFIG_FILE_NAME" > /dev/null 2>&1; then
-            echo "status  present, DIFFERS from the local file - config-upload to replace it"
+            echo "status  present, DIFFERS from the local file - sync-config to replace it"
         else
             echo "status  present"
         fi
     else
-        echo "status  MISSING - the task will fail to start: config-upload"
+        echo "status  MISSING - the task will fail to start: sync-config"
     fi
 }
 
 # Upload the local environment file to where the deployment expects it. It is
 # not part of the image and the pipeline never touches it, so it has to be put
 # there once, and again whenever it changes.
-config_upload() {
+sync_config() {
     local target="${1:-$TARGET}" uri file
     uri=$(config_uri "$target")
     require_file "$CONFIG_FILE_NAME"
@@ -1636,11 +1736,12 @@ build_platform() {
 #   build
 #   build lambda
 #
-build() {
+local_build() {
     local target="${1:-$TARGET}"
     require_command docker
 
-    local dockerfile base_image platform
+    local dockerfile base_image platform tag
+    tag=$(image_tag "$target")
     dockerfile=$(parameter_value "$target" DockerFilename)
     base_image=$(parameter_value "$target" BaseImageURI)
     platform="${BUILD_PLATFORM:-$(build_platform "$target")}"
@@ -1654,29 +1755,18 @@ build() {
         echo '  eval "$(ssh-agent -s)" && ssh-add ~/.ssh/github_id_rsa' >&2
     fi
 
-    # An ECR Public login token lasts 12 hours, and docker keeps presenting an
-    # expired one instead of falling back to an anonymous pull - the build then
-    # fails on the FROM with "Your authorization token has expired". Refresh it,
-    # or drop it so anonymous pulls resume. Never fatal: a build that does not
-    # pull from ECR Public should not care.
     if [[ "$base_image" == public.ecr.aws/* ]] && command -v aws > /dev/null 2>&1; then
-        if aws ecr-public get-login-password --region us-east-1 2>/dev/null \
-            | docker login --username AWS --password-stdin public.ecr.aws > /dev/null 2>&1; then
-            :
-        else
-            echo "warning: could not refresh the ECR Public token - anonymous pull" >&2
-            docker logout public.ecr.aws > /dev/null 2>&1 || true
-        fi
+        ecr_public_login
     fi
 
-    echo "building ${STACK_NAME}:latest from ${dockerfile} (${base_image}, ${platform})"
+    echo "building ${tag} from ${dockerfile} (${base_image}, ${platform})"
     # ${a[@]+"${a[@]}"} - bash 3.2, which macOS ships, treats an empty array
     # as unset under set -u.
     docker build \
         --platform "$platform" \
         ${ssh_args[@]+"${ssh_args[@]}"} \
         --build-arg BASE_IMAGE_URI="$base_image" \
-        -t "${STACK_NAME}:latest" \
+        -t "$tag" \
         --file "$dockerfile" \
         .
 }
@@ -1695,12 +1785,12 @@ build() {
 #
 #   RUN_ENV="SECRET_NAME=my-settings DEBUG=1" run "" src.main_lambda.lambda_handler_1 lambda
 #
-run() {
+local_run() {
     local entrypoint=$1 cmd=$2 target="${3:-$TARGET}"
     require_args 2 $# "run <entrypoint> <cmd> [target]"
     require_command docker
 
-    build "$target"
+    local_build "$target"
 
     local port target_port
     port=$(local_port "$target")
@@ -1713,25 +1803,28 @@ run() {
     # EOF, exits 0 and logs nothing, so the run looks like it did something.
     if [[ -z "$entrypoint" && -z "$cmd" ]]; then
         local image_entrypoint image_cmd
-        image_entrypoint=$(docker inspect --format '{{json .Config.Entrypoint}}' "${STACK_NAME}:latest" 2>/dev/null)
-        image_cmd=$(docker inspect --format '{{json .Config.Cmd}}' "${STACK_NAME}:latest" 2>/dev/null)
+        image_entrypoint=$(docker inspect --format '{{json .Config.Entrypoint}}' "$(image_tag "$target")" 2>/dev/null)
+        image_cmd=$(docker inspect --format '{{json .Config.Cmd}}' "$(image_tag "$target")" 2>/dev/null)
         # Quote back what THIS target deploys rather than an example from
         # another one - the three targets take entirely different arguments,
         # and a lambda handler pasted into a service run does nothing useful.
-        local want_entrypoint want_cmd deployment_file
+        local want_entrypoint want_cmd deployment_file target_arg=""
         deployment_file=$(parameter_value "$target" DeploymentCfnFilename)
         want_entrypoint=$(container_run_value "$target" ContainerEntryPoint)
         want_cmd=$(container_run_value "$target" ContainerCmd)
+        # Named only when it is not the project's own target. Compared against
+        # project.env rather than $TARGET, which carries the override.
+        [[ "$target" != "$(declared_target)" ]] && target_arg=" TARGET=${target}"
 
         if [[ -n "$want_cmd" ]]; then
             die "ERROR: no ENTRYPOINT and no CMD - the image would run its own default (entrypoint ${image_entrypoint:-?}, cmd ${image_cmd:-?}).
   ${target} deploys this, from ${deployment_file}:
-    make run ENTRYPOINT=\"${want_entrypoint}\" CMD=\"${want_cmd}\" TARGET=${target}"
+    make local-run ENTRYPOINT=\"${want_entrypoint}\" CMD=\"${want_cmd}\"${target_arg}"
         fi
 
         die "ERROR: no ENTRYPOINT and no CMD - the image would run its own default (entrypoint ${image_entrypoint:-?}, cmd ${image_cmd:-?}).
   What this target runs is ContainerEntryPoint and ContainerCmd in ${deployment_file}; drop the CloudFormation quotes:
-    make run ENTRYPOINT=<entrypoint> CMD=\"<arguments>\" TARGET=${target}"
+    make local-run ENTRYPOINT=<entrypoint> CMD=\"<arguments>\"${target_arg}"
     fi
 
     local entrypoint_args=()
@@ -1757,7 +1850,7 @@ run() {
         --volume "${AWS_CONFIG_HOST_DIR}/:/root/.aws:ro" \
         ${env_args[@]+"${env_args[@]}"} \
         ${entrypoint_args[@]+"${entrypoint_args[@]}"} \
-        "${STACK_NAME}:latest" ${cmd} > /dev/null
+        "$(image_tag "$target")" ${cmd} > /dev/null
 
     # A server keeps the port open; a task runs to completion and exits, so
     # report what the container is actually doing rather than a URL nothing
@@ -1881,7 +1974,8 @@ pipeline
   deploy-cicd    [target]                     create/update the pipeline stack
   config         [target]                     where the environment file is read
                                               from, and whether it is there
-  config-upload  [target]                     upload it - the pipeline does not
+  sync-config    [target]                     put it where the deployment reads
+                                              it - the pipeline never does
   remote                                      point git remote at CodeCommit
   upload         <host> <directory>           rsync this project to a remote
                                               host; DRY_RUN=1 to preview
@@ -1907,8 +2001,8 @@ teardown
                                               and asks once
 
 local docker
-  build          [target]
-  run            <entrypoint> <cmd> [target]  build, then run detached
+  local-build    [target]
+  local-run      <entrypoint> <cmd> [target]  build, then run detached
                                               RUN_ENV="K=V K2=V2" for app env vars
   invoke         [json]                       POST to the local lambda emulator
   local-logs
@@ -1919,7 +2013,7 @@ Defaults: PROJECT_NAME=${PROJECT_NAME} TARGET=${TARGET} AWS_PROFILE=${AWS_PROFIL
 Override any of them in the environment, or edit the Makefile for the project.
 
   PROJECT_NAME=lambda-test-1 ./make/commands.sh deploy-cicd lambda
-  ./make/commands.sh run uvicorn "src.main_server:app --host 0.0.0.0 --port 8080" service/server
+  ./make/commands.sh local-run uvicorn "src.main_server:app --host 0.0.0.0 --port 8080" service/server
 EOF
 }
 
@@ -1943,7 +2037,7 @@ case "$command" in
     deploy-cicd)    deploy_cicd  "$@" ;;
     remote)         remote            ;;
     config)         config       "$@" ;;
-    config-upload)  config_upload "$@" ;;
+    sync-config)    sync_config  "$@" ;;
     upload)         upload       "$@" ;;
     push)           push         "$@" ;;
     pipeline)       pipeline          ;;
@@ -1957,8 +2051,8 @@ case "$command" in
     delete-stack)   delete_stack      ;;
     delete-cicd)    delete_cicd       ;;
     delete-all)     delete_all        ;;
-    build)          build        "$@" ;;
-    run)            run          "$@" ;;
+    local-build)    local_build  "$@" ;;
+    local-run)      local_run    "$@" ;;
     invoke)         invoke       "$@" ;;
     local-logs)     local_logs        ;;
     shell)          shell             ;;

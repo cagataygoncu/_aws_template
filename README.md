@@ -114,7 +114,7 @@ what the deployment template passes.
 ```
 _aws_template/
 ├── _base/              # shared across all languages — single source of truth
-│   ├── Makefile        # `make deploy-cicd`, `make run`, ... → make/commands.sh
+│   ├── Makefile        # `make deploy-cicd`, `make local-run`, ... → make/commands.sh
 │   ├── make/           # what the Makefile shells out to
 │   │   ├── commands.sh             # the deploy/local-run logic, one function per command
 │   │   └── setup_local_dev_env.sh  # `make local-dev-setup`: ./venv from environment.yaml
@@ -196,7 +196,7 @@ Toolchain: python 3.13
 ```
 
 Nothing checks that the version exists as an image tag — a wrong one fails at
-the first `make build` or devcontainer open, not at scaffold time.
+the first `make local-build` or devcontainer open, not at scaffold time.
 
 | Language | `language_version` | also |
 |----------|--------------------|------|
@@ -252,7 +252,7 @@ equivalents in `_base/targets/service/*/deployment.yaml`:
 Each matches that language's Dockerfile — where it leaves its build output,
 and what it `EXPOSE`s. `{{CONTAINER_PORT}}` reaches three places that have to
 agree: `ContainerPort` in both deployment templates, `CONTAINER_PORT` in the
-project's Makefile (which is the container-side port `make run` publishes to),
+project's Makefile (which is the container-side port `make local-run` publishes to),
 and the app's own bind port. Next.js serves 3000 and an Elixir release 4000, so
 a single 5040 default was wrong for both. The
 compiled languages go through `env` because the ECS module builds the
@@ -442,12 +442,12 @@ host's Docker socket is mounted and `post_create.sh` installs the Docker CLI
 there for `validate`, `outputs`, `logs`, `deploy-cicd` and `push`.
 
 One subtlety that the templates handle for you: a build context is *streamed*
-to the daemon, so `make build` just works, but `docker run -v` paths are
+to the daemon, so `make local-build` just works, but `docker run -v` paths are
 resolved by the daemon **on the host** — inside the container `$HOME/.aws`
 would name a path the host cannot see. `commands.sh` mounts
 `$AWS_CONFIG_HOST_DIR` instead, which `devcontainer.json` sets to the host's
 `~/.aws` and which defaults to `$HOME/.aws` on the host. Ports published by
-`make run` land on the host, not on the devcontainer's forwarded port.
+`make local-run` land on the host, not on the devcontainer's forwarded port.
 
 #### Opening the deployed image instead
 
@@ -539,13 +539,13 @@ container where it does not exist, leaving the Python extension and Black with
 no interpreter at all. On the host the extension finds `./venv` on its own.
 
 The configurations set `MODE=local`, the same thing the Makefile's `RUN_ENV`
-default does for `make run`, so a debug session uses the in-memory cache rather
-than reaching for Secrets Manager. The Python configurations also set `PYTHONPATH` to the
+default does for `make local-run`, so a debug session skips the Secrets Manager read.
+The Python configurations also set `PYTHONPATH` to the
 workspace, matching `ENV PYTHONPATH=/` in the images, and the server binds the
 language's own port — the one `devcontainer.json` forwards.
 
 Debugging runs the code *in the devcontainer itself*, against the image's
-interpreter or toolchain. `make run` is the other thing: it builds the real
+interpreter or toolchain. `make local-run` is the other thing: it builds the real
 target image and runs that. Use the first while writing code, the second to
 check the image the pipeline will build.
 
@@ -593,15 +593,15 @@ credentials end up in the container's environment.
 
 ```bash
 # lambda: keep the image entrypoint, pass the handler as the command
-make run ENTRYPOINT= CMD="src.main_lambda.lambda_handler_1" TARGET=lambda
+make local-run ENTRYPOINT= CMD="src.main_lambda.lambda_handler_1" TARGET=lambda
 make invoke JSON='{"test": 1}'
 
 # task
-make run ENTRYPOINT=python CMD="src/main_task.py" TARGET=service/task
+make local-run ENTRYPOINT=python CMD="src/main_task.py" TARGET=service/task
 
 # server - bind the container port (CONTAINER_PORT in the Makefile);
-# make run publishes it on localhost:8080
-make run ENTRYPOINT=uvicorn CMD="src.main_server:app --host 0.0.0.0 --port 5040" TARGET=service/server
+# make local-run publishes it on localhost:8080
+make local-run ENTRYPOINT=uvicorn CMD="src.main_server:app --host 0.0.0.0 --port 5040" TARGET=service/server
 
 make local-logs
 make shell
@@ -625,9 +625,9 @@ into the container's `Command` and cannot take an empty one; `env` execs the
 binary, which keeps it PID 1.
 
 A generated project does not carry this table — its own values are the only
-ones that apply there, and `make run` with neither argument prints them.
+ones that apply there, and `make local-run` with neither argument prints them.
 
-`make build` builds for the platform the pipeline builds for, not the one your
+`make local-build` builds for the platform the pipeline builds for, not the one your
 laptop runs. It reads `CodeBuildImage` from the target's
 `cicd_parameters.json` — `amazonlinux2-x86_64-standard` gives `linux/amd64`,
 an `aarch64` CodeBuild image gives `linux/arm64`. That matters because the
@@ -640,7 +640,7 @@ Desktop's Rosetta option helps a lot. For a fast native build while iterating,
 override it, remembering the result is not what deploys:
 
 ```bash
-make build BUILD_PLATFORM=linux/arm64
+make local-build BUILD_PLATFORM=linux/arm64
 ```
 
 `make info` prints the platform it will use.
@@ -649,7 +649,7 @@ The container gets only the AWS variables by default. Anything the code reads
 itself — a secret name, a feature flag — goes in `RUN_ENV`:
 
 ```bash
-make run ENTRYPOINT= CMD="src.main_lambda.lambda_handler_1" TARGET=lambda \
+make local-run ENTRYPOINT= CMD="src.main_lambda.lambda_handler_1" TARGET=lambda \
     RUN_ENV="SECRET_NAME=my-settings DEBUG=1"
 ```
 
@@ -677,7 +677,7 @@ Two things keep the commands honest:
 
 - **One source of truth per target.** The deployment template, the Dockerfile
   and the base image all come from that target's `cicd_parameters.json`, so a
-  local `make build` and the pipeline's build cannot drift apart.
+  local `make local-build` and the pipeline's build cannot drift apart.
 - **`PROJECT_NAME` is sanitised into `STACK_NAME`.** Project directories are
   snake_case; CloudFormation stack names allow no underscores. `my_service`
   deploys as stacks `my-service` and `my-service-cicd`.

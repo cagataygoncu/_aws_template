@@ -39,7 +39,7 @@
         {
             // The Lambda entrypoint blocks in lambda.Start waiting for the
             // runtime API, so this is for stepping into Handler with a
-            // breakpoint rather than for a normal run. `make run` + `make
+            // breakpoint rather than for a normal run. `make local-run` + `make
             // invoke` exercises it properly through the runtime emulator.
             "name": "Lambda handler",
             "type": "go",

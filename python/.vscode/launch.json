@@ -7,8 +7,8 @@
     // Debug Console, which only carries the adapter's own messages.
     // internalConsoleOptions opens it anyway, so a real launch failure is
     // visible rather than silent.
-    // MODE=local keeps process_request on the in-memory cache, the same thing
-    // the Makefile's RUN_ENV default does for `make run`.
+    // MODE=local makes process_request skip the Secrets Manager read, the
+    // same thing the Makefile's RUN_ENV default does for `make local-run`.
     "version": "0.2.0",
     "configurations": [
         {

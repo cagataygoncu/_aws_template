@@ -38,6 +38,18 @@ Parameters:
         Type: CommaDelimitedList
     EnvironmentVariables:
       Type: String
+    # Allocated RAM, and CPU with it - Lambda scales the two together, so this
+    # is the performance dial as much as the memory one. Billing is
+    # MemorySize x duration whether the function uses it or not, so read
+    # maxMemoryUsedMB from a real invocation's report line before changing it.
+    MemorySize:
+        Type: Number
+    # Wall clock, and the ceiling on how long a synchronous `aws lambda invoke`
+    # can block. Time spent waiting on a socket is billed the same as time
+    # spent working, so a generous timeout on a function that can hang is
+    # expensive rather than merely slow.
+    Timeout:
+        Type: Number
     # gig-cfn-templates release that every nested stack below is pulled from.
     # Bump this one value to move the whole target to a new template version.
     TemplateVersion:
@@ -174,7 +186,8 @@ Resources:
         ContainerEntryPoint: "/lambda-entrypoint.sh"
         ContainerCmd: "{{CONTAINER_CMD_LAMBDA}}"
         ContainerWorkingDirectory: "/var/task"
-        MemorySize: 4096
+        MemorySize: !Ref MemorySize
+        Timeout: !Ref Timeout
         ApplicationLogLevel: !Ref ApplicationLogLevel
         SystemLogLevel: !Ref SystemLogLevel
         SubnetIds: !If

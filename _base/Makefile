@@ -9,7 +9,7 @@
 #   make info          [target]
 #   make validate      [target]
 #   make config        [target]        where the env file is read from, is it there
-#   make config-upload [target]        upload it - the pipeline does not
+#   make sync-config   [target]        put it where the deployment reads it
 #   make deploy-cicd   [target]        create/update the pipeline stack
 #   make push      <branch>            push <branch> to CodeCommit main
 #   make upload    <host> <directory>  rsync this project to a remote host
@@ -19,11 +19,11 @@
 #   make url
 #   make logs          [log-group]
 #   make delete-all
-#   make build         [target]
-#   make run           ENTRYPOINT=... CMD="..." [RUN_ENV="KEY=VALUE ..."]
+#   make local-build   [target]
+#   make local-run     ENTRYPOINT=... CMD="..." [RUN_ENV="KEY=VALUE ..."]
 #
 # A target is the path under targets/ holding a cicd_parameters.json:
-# lambda, service/task, service/server. Set TARGET below to
+# lambda, task, server (or the full path under targets/). Set TARGET below to
 # the one this project deploys, and it becomes the default everywhere:
 #
 #   make deploy-cicd                   uses $(TARGET)
@@ -47,7 +47,7 @@
 # fails rather than guessing. Override either for one invocation:
 #
 #   make deploy-cicd PROJECT_NAME=lambda-test-1
-#   TARGET=lambda make build
+#   TARGET=lambda make local-build
 #
 # Override the project or the account per invocation:
 #
@@ -73,22 +73,22 @@ export AWS_PROFILE
 export AWS_REGION
 export BUILD_PLATFORM
 
-# Arguments for `make run`. Quoted here rather than passed positionally,
+# Arguments for `make local-run`. Quoted here rather than passed positionally,
 # because make splits its goals on whitespace and CMD usually contains some.
 ENTRYPOINT ?=
 CMD        ?=
 JSON       ?= {}
-# Platform `make build` builds for. Empty derives it from the target's
+# Platform `make local-build` builds for. Empty derives it from the target's
 # CodeBuildImage, so a local image matches what the pipeline produces. Set
 # linux/arm64 for a fast native build that is NOT what deploys.
 BUILD_PLATFORM ?=
 
-# Application environment for `make run`, as "KEY=VALUE KEY2=VALUE2".
+# Application environment for `make local-run`, as "KEY=VALUE KEY2=VALUE2".
 # MODE=local is the default because this target only ever runs on a dev
 # machine; the deployed code sets nothing and so runs online. Overriding this
 # variable replaces it, so keep MODE=... in whatever you pass.
 RUN_ENV    ?= MODE=local
-# Exported so `make info` reports the value `make run` would use. It must come
+# Exported so `make info` reports the value `make local-run` would use. It must come
 # AFTER the assignment: `export VAR` on its own defines VAR as empty, and the
 # ?= above would then decline to set it - which silently drops MODE=local.
 export RUN_ENV
@@ -115,9 +115,9 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help local-dev-setup info targets template-version aws-info validate config config-upload deploy-cicd remote push pipeline \
+.PHONY: help local-dev-setup info targets template-version aws-info validate config sync-config deploy-cicd remote push pipeline \
         pipeline-stop upload outputs output-value url events logs delete-stack \
-        delete-cicd delete-all build run invoke local-logs shell stop
+        delete-cicd delete-all local-build local-run invoke local-logs shell stop
 
 help:          ; @$(COMMANDS) help
 local-dev-setup: ; @$(COMMANDS) local-dev-setup
@@ -128,7 +128,7 @@ aws-info:      ; @$(COMMANDS) aws-info
 
 validate:      ; @$(COMMANDS) validate      $(ARGS)
 config:        ; @$(COMMANDS) config        $(ARGS)
-config-upload: ; @$(COMMANDS) config-upload $(ARGS)
+sync-config:   ; @$(COMMANDS) sync-config   $(ARGS)
 deploy-cicd:   ; @$(COMMANDS) deploy-cicd   $(ARGS)
 remote:        ; @$(COMMANDS) remote
 push:          ; @$(COMMANDS) push          $(ARGS)
@@ -147,8 +147,8 @@ delete-stack:  ; @$(COMMANDS) delete-stack
 delete-cicd:   ; @$(COMMANDS) delete-cicd
 delete-all:    ; @$(COMMANDS) delete-all
 
-build:         ; @$(COMMANDS) build         $(ARGS)
-run:           ; @RUN_ENV="$(RUN_ENV)" $(COMMANDS) run "$(ENTRYPOINT)" "$(CMD)" "$(TARGET)"
+local-build:   ; @$(COMMANDS) local-build   $(ARGS)
+local-run:     ; @RUN_ENV="$(RUN_ENV)" $(COMMANDS) local-run "$(ENTRYPOINT)" "$(CMD)" "$(TARGET)"
 invoke:        ; @$(COMMANDS) invoke        '$(JSON)'
 local-logs:    ; @$(COMMANDS) local-logs
 shell:         ; @$(COMMANDS) shell

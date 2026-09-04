@@ -99,7 +99,7 @@ case "$language" in
         container_entrypoint_server="uvicorn"
         container_cmd_server="!Sub 'src.main_server:app --host 0.0.0.0 --port \${ContainerPort}'"
         # Shell-ready twins of the container_* values above, for the README's
-        # `make run` examples: those carry CloudFormation quoting, and python's
+        # `make local-run` examples: those carry CloudFormation quoting, and python's
         # server value is a !Sub expression, so neither can be pasted.
         run_entrypoint_task="python"
         run_cmd_task="src/main_task.py"
@@ -126,7 +126,7 @@ case "$language" in
         container_entrypoint_server="/usr/bin/env"
         container_cmd_server="'/app/build/server'"
         # Shell-ready twins of the container_* values above, for the README's
-        # `make run` examples: those carry CloudFormation quoting, and python's
+        # `make local-run` examples: those carry CloudFormation quoting, and python's
         # server value is a !Sub expression, so neither can be pasted.
         run_entrypoint_task="/usr/bin/env"
         run_cmd_task="/app/build/task"
@@ -147,7 +147,7 @@ case "$language" in
         container_entrypoint_server="/usr/bin/env"
         container_cmd_server="'/app/build/main'"
         # Shell-ready twins of the container_* values above, for the README's
-        # `make run` examples: those carry CloudFormation quoting, and python's
+        # `make local-run` examples: those carry CloudFormation quoting, and python's
         # server value is a !Sub expression, so neither can be pasted.
         run_entrypoint_task="/usr/bin/env"
         run_cmd_task="/app/build/main"
@@ -167,7 +167,7 @@ case "$language" in
         container_entrypoint_server="node"
         container_cmd_server="'server.mjs'"
         # Shell-ready twins of the container_* values above, for the README's
-        # `make run` examples: those carry CloudFormation quoting, and python's
+        # `make local-run` examples: those carry CloudFormation quoting, and python's
         # server value is a !Sub expression, so neither can be pasted.
         run_entrypoint_task="node"
         run_cmd_task="server.mjs"
@@ -189,7 +189,7 @@ case "$language" in
         container_entrypoint_server="/app/bin/${project_name}"
         container_cmd_server="'start'"
         # Shell-ready twins of the container_* values above, for the README's
-        # `make run` examples: those carry CloudFormation quoting, and python's
+        # `make local-run` examples: those carry CloudFormation quoting, and python's
         # server value is a !Sub expression, so neither can be pasted.
         run_entrypoint_task="/app/bin/${project_name}"
         run_cmd_task="start"
@@ -325,7 +325,7 @@ echo
 echo "Then, in the new project:"
 echo "    make help                   # every deploy / local-run command"
 echo "    make template-version       # gig-cfn-templates release inherited from the template"
-echo "    Set TARGET in the Makefile to the target this project deploys."
+echo "    Set TARGET in project.env: lambda, task or server."
 echo
 echo "Review targets/ and remove the deployment targets you don't need"
 echo "(e.g. nextjs typically only needs targets/service/server)."

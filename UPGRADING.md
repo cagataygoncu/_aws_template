@@ -134,8 +134,8 @@ make targets
 make validate lambda            # once per target the project still has
 make validate service/task
 
-make build                      # the pipeline builds the same way
-make run ENTRYPOINT=python CMD="src/main_task.py" TARGET=service/task
+make local-build                      # the pipeline builds the same way
+make local-run ENTRYPOINT=python CMD="src/main_task.py" TARGET=service/task
 make local-logs
 make stop
 ```
