@@ -117,6 +117,10 @@ case "$language" in
         lint_tool="ruff"
         lint_command="ruff check . && ruff format --check ."
         lint_install="pip install ruff, or conda install -c conda-forge ruff"
+        # What the container health check runs; empty means none. It probes
+        # the process's own health endpoint through the same program, so no
+        # curl is needed in the image and the port and path stay in one place.
+        healthcheck_command="python src/healthcheck.py"
         ;;
     golang)
         # 1.26 is the floor: aws-lambda-go v1.55 and gopls both require it.
@@ -151,6 +155,10 @@ case "$language" in
         # command - and it still prints which files need formatting.
         lint_command="go vet ./... && ! gofmt -l src tests | grep ."
         lint_install="the Go toolchain is the linter here - install Go, or open the devcontainer"
+        # What the container health check runs; empty means none. It probes
+        # the process's own health endpoint through the same program, so no
+        # curl is needed in the image and the port and path stay in one place.
+        healthcheck_command="/app/build/server -healthcheck"
         ;;
     cpp)
         # No single toolchain version: the images are named by distro release.
@@ -179,6 +187,9 @@ case "$language" in
         # running it here, where there is no src/ to find.
         lint_command="clang-format --dry-run --Werror \$(find src tests -name '*.cpp' -o -name '*.hpp' -o -name '*.h')"
         lint_install="apt-get install clang-format, or brew install clang-format"
+        # No health check: this layer serves no HTTP, so there is nothing to
+        # probe. Empty leaves the container without one, which is honest.
+        healthcheck_command=""
         ;;
     typescript)
         language_version="${LANGUAGE_VERSION:-22}"
@@ -208,6 +219,10 @@ case "$language" in
         # one that stops the build.
         lint_command="npx tsc --noEmit && npx eslint ."
         lint_install="install Node, or open the devcontainer"
+        # What the container health check runs; empty means none. It probes
+        # the process's own health endpoint through the same program, so no
+        # curl is needed in the image and the port and path stay in one place.
+        healthcheck_command="node build/src/main_server.js --healthcheck"
         ;;
     nextjs)
         language_version="${LANGUAGE_VERSION:-20}"
@@ -240,6 +255,10 @@ case "$language" in
         # next lint does not stop to ask how to configure itself.
         lint_command="npx tsc --noEmit && npm run lint"
         lint_install="install Node, or open the devcontainer"
+        # What the container health check runs; empty means none. It probes
+        # the process's own health endpoint through the same program, so no
+        # curl is needed in the image and the port and path stay in one place.
+        healthcheck_command="node server.mjs --healthcheck"
         ;;
     elixir)
         language_version="${LANGUAGE_VERSION:-1.19}"
@@ -267,6 +286,9 @@ case "$language" in
         lint_tool="mix"
         lint_command="mix format --check-formatted && mix compile --warnings-as-errors"
         lint_install="install Elixir, or open the devcontainer"
+        # No health check: this layer serves no HTTP yet - see the note in
+        # lib/app/application.ex about adding a web framework.
+        healthcheck_command=""
         ;;
 esac
 
@@ -386,6 +408,7 @@ substitute_in_file() {
         -e "s|{{LINT_TOOL}}|$(sed_replacement "$lint_tool")|g" \
         -e "s|{{LINT_COMMAND}}|$(sed_replacement "$lint_command")|g" \
         -e "s|{{LINT_INSTALL}}|$(sed_replacement "$lint_install")|g" \
+        -e "s|{{HEALTHCHECK_COMMAND}}|$(sed_replacement "$healthcheck_command")|g" \
         "$file" > "$tmp" && cat "$tmp" > "$file"
     # cat back into the original rather than mv over it: mv gives the file
     # mktemp's 0600, which silently stripped the executable bit from
@@ -395,7 +418,7 @@ substitute_in_file() {
 
 echo ">>> Substituting placeholders (project name, language, images, entrypoints)"
 while IFS= read -r -d '' file; do
-    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|LANGUAGE_VERSION|OTP_VERSION|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+)\}\}' "$file" 2>/dev/null; then
+    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|LANGUAGE_VERSION|OTP_VERSION|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+|HEALTHCHECK_COMMAND)\}\}' "$file" 2>/dev/null; then
         substitute_in_file "$file"
     fi
 done < <(find "$destination_dir" -type f \

@@ -1579,6 +1579,68 @@ container_run_value() {
     echo "$value"
 }
 
+# One value out of an environment file: KEY=value lines, last one wins.
+env_value() {
+    local file="$1" name="$2"
+    [[ -f "$file" ]] || return 0
+    sed -n "s/^${name}=//p" "$file" | tail -n 1 | tr -d '"'
+}
+
+# The config object the service reads at startup. CONFIG_BUCKET and CONFIG_KEY
+# in the environment file name it, so the deployment carries its own location
+# rather than the settings secret holding a pointer to it. The local copy is
+# services/<basename of CONFIG_KEY>, so one value names both ends.
+config_object_uri() {
+    local bucket key
+    bucket=$(env_value "$CONFIG_FILE_NAME" CONFIG_BUCKET)
+    key=$(env_value "$CONFIG_FILE_NAME" CONFIG_KEY)
+    [[ -n "$bucket" && -n "$key" ]] || return 0
+    echo "s3://${bucket}/${key}"
+}
+
+config_object_file() {
+    local key
+    key=$(env_value "$CONFIG_FILE_NAME" CONFIG_KEY)
+    [[ -n "$key" ]] || return 0
+    echo "services/${key##*/}"
+}
+
+# Where the config object is read from, and whether what is there matches the
+# local file. A project whose environment file names none has nothing to show.
+config_object_status() {
+    local uri file
+    uri=$(config_object_uri)
+    [[ -n "$uri" ]] || return 0
+    file=$(config_object_file)
+
+    echo ""
+    echo "local   ${file}"
+    echo "remote  ${uri}"
+    echo "        named by CONFIG_BUCKET and CONFIG_KEY in ${CONFIG_FILE_NAME}"
+
+    if ! aws s3 ls "$uri" > /dev/null 2>&1; then
+        echo "status  MISSING - the service will not start: sync-config"
+    elif [[ ! -f "$file" ]]; then
+        echo "status  present remotely, but there is no local ${file}"
+    elif aws s3 cp "$uri" - 2>/dev/null | diff -q - "$file" > /dev/null 2>&1; then
+        echo "status  present"
+    else
+        echo "status  present, DIFFERS from the local file - sync-config to replace it"
+    fi
+}
+
+# Upload the config object beside the environment file. Both belong to the
+# deployment and neither is in the image, so sync-config puts both in place.
+sync_config_object() {
+    local uri file
+    uri=$(config_object_uri)
+    [[ -n "$uri" ]] || return 0
+
+    file=$(config_object_file)
+    require_file "$file"
+    aws s3 cp "$file" "$uri"
+}
+
 # Where this target reads its environment file from, and whether it is there.
 #
 #   config
@@ -1610,6 +1672,11 @@ config() {
                 echo "        then commit and push it - the function is unchanged until"
                 echo "        the pipeline redeploys"
             fi
+
+            # The config object is in S3 whatever the target: only the
+            # environment file differs, travelling with the template here
+            # rather than being uploaded.
+            config_object_status
             return 0
         fi
         echo "${target}: no environment file - this target reads none"
@@ -1634,11 +1701,14 @@ config() {
     else
         echo "status  MISSING - the task will fail to start: sync-config"
     fi
+
+    config_object_status
 }
 
-# Upload the local environment file to where the deployment expects it. It is
-# not part of the image and the pipeline never touches it, so it has to be put
-# there once, and again whenever it changes.
+# Upload the local environment file, and the config object it names, to where
+# the deployment expects them. Neither is part of the image and the pipeline
+# never touches them, so they have to be put there once, and again whenever
+# they change.
 sync_config() {
     local target="${1:-$TARGET}" uri file
     uri=$(config_uri "$target")
@@ -1646,6 +1716,7 @@ sync_config() {
 
     if [[ -n "$uri" ]]; then
         aws s3 cp "$CONFIG_FILE_NAME" "$uri"
+        sync_config_object
         return 0
     fi
 
@@ -1663,6 +1734,8 @@ sync_config() {
     tmp=$(mktemp)
     jq --arg env "$(env_to_json "$CONFIG_FILE_NAME" | tr -s ' \n' ' ')" \
         '.Parameters.EnvironmentVariables = $env' "$file" > "$tmp" && mv "$tmp" "$file"
+
+    sync_config_object
 
     echo "wrote ${CONFIG_FILE_NAME} into ${file} (EnvironmentVariables)"
     echo "  it deploys with the template - commit and push it"
@@ -2064,8 +2137,9 @@ pipeline
   deploy-cicd    [target]                     create/update the pipeline stack
   config         [target]                     where the environment file is read
                                               from, and whether it is there
-  sync-config    [target]                     put it where the deployment reads
-                                              it - the pipeline never does
+  sync-config    [target]                     upload the environment file and
+                                              the config object it names - the
+                                              pipeline never does
   remote                                      point git remote at CodeCommit
   upload         <host> <directory>           rsync this project to a remote
                                               host; DRY_RUN=1 to preview

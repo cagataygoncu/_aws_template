@@ -188,6 +188,37 @@ whether the two are in step.
 Both read `TARGET` from `project.env`, so neither needs the target spelled out;
 pass one positionally only to act on a target this project is not set to.
 
+### The config object
+
+A service usually needs more than a handful of variables: endpoints, feature
+blocks, a list of processors. That belongs in a JSON object in S3 rather than in
+the environment file, and `CONFIG_BUCKET` and `CONFIG_KEY` in
+`container_config.env` name it:
+
+```
+CONFIG_BUCKET=gig-config
+CONFIG_KEY=my-service/my_service.json
+```
+
+The local copy is `services/<basename of CONFIG_KEY>` — here
+`services/my_service.json` — so one value names both ends. `make sync-config`
+uploads the environment file and the object together, and `make config` reports
+both, including whether the remote copy still matches the local one.
+
+Naming it here rather than in the secret means the deployment carries its own
+config location, so a second deployment reading a different object needs no
+second secret. Keep secrets out of it: it is an S3 object like the environment
+file, and passwords and API keys belong in Secrets Manager under `SECRET_NAME`.
+
+Every target reads the object from S3, `lambda` included. Only the *environment
+file* differs between them: on `lambda` it travels with the template as
+`EnvironmentVariables` rather than being uploaded, which is how `CONFIG_BUCKET`
+and `CONFIG_KEY` still reach the function. The object itself is uploaded to S3
+either way, and the execution role already has `S3BucketList` covering it.
+
+Leave both keys empty when the service reads no such object — neither command
+then mentions it.
+
 ## Develop in the devcontainer
 
 Open in VS Code and *Reopen in Container*. The picker offers:

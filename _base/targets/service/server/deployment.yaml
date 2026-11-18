@@ -170,6 +170,21 @@ Resources:
                 ContainerWorkingDirectory: '{{CONTAINER_WORKDIR}}'
                 ContainerEntryPoint: '{{CONTAINER_ENTRYPOINT_SERVER}}'
                 ContainerCmd: {{CONTAINER_CMD_SERVER}}
+                # The container health check: the process probes its own
+                # /health endpoint through the same program and reports by exit
+                # status, so the image needs no curl and the port and path stay
+                # in one place. Empty for a layer that serves no HTTP, which
+                # leaves the container without a health check rather than
+                # inventing one that cannot fail.
+                #
+                # ecs-srv-alb-0020 gained this parameter after v1.10.16, so
+                # TemplateVersion has to be on a later release than that.
+                #
+                # It is independent of the load balancer's check and much
+                # faster: a container that cannot serve is replaced without
+                # waiting out HealthCheckGracePeriodSeconds, and each
+                # replacement counts toward the deployment circuit breaker.
+                ContainerHealthCheckCommand: '{{HEALTHCHECK_COMMAND}}'
                 ContainerEnvironmentFile: !If
                     - HasEnvironmentFileArn
                     - !Ref ContainerEnvironmentFileArn

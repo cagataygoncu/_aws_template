@@ -49,9 +49,20 @@ def background_task(data):
     pass
 
 
+# The ALB target group health check, and the path the container health check
+# probes. It is the alb module's default HealthCheckPath, and src/healthcheck.py
+# asks for the same one, so the three cannot drift apart. Keep it free of
+# dependencies: if it calls the database, a slow database takes the whole
+# service out - and it must stay outside the API key check, since neither the
+# load balancer nor the probe sends one.
+@app.get("/health")
+async def health():
+    return JSONResponse({"status": "ok"})
+
+
 @app.get("/")
 async def root():
-    return JSONResponse({"message": "aws-service-template task is running"})
+    return JSONResponse({"message": "{{PROJECT_NAME}} is running"})
 
 
 @app.get("/unprotected-get")

@@ -10,7 +10,7 @@
 #   make lint                          source + cfn-lint over every template
 #   make validate      [target]
 #   make config        [target]        where the env file is read from, is it there
-#   make sync-config   [target]        put it where the deployment reads it
+#   make sync-config   [target]        upload it and the config object it names
 #   make deploy-cicd   [target]        create/update the pipeline stack
 #   make push      <branch>            push <branch> to CodeCommit main
 #   make upload    <host> <directory>  rsync this project to a remote host
