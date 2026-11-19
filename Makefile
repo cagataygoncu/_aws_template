@@ -85,7 +85,10 @@ check-manifest: ; @./make/manifest.sh check
 classify:       ; @./make/manifest.sh classify $(ARGS)
 
 # Passed explicitly, so a value set on the command line reaches the script
-# whatever make's export rules say.
-render-all: ; @REF="$(REF)" OUT="$(OUT)" LANGUAGES="$(LANGUAGES)" LINT="$(LINT)" BUILD="$(BUILD)" ./make/render_all.sh
+# whatever make's export rules say. LINT only when the caller set it: make
+# has a built-in LINT (= lint, for old implicit rules), so $(LINT) alone is
+# never empty and every render-all would lint.
+RENDER_LINT = $(if $(filter command line environment,$(origin LINT)),$(LINT))
+render-all: ; @REF="$(REF)" OUT="$(OUT)" LANGUAGES="$(LANGUAGES)" LINT="$(RENDER_LINT)" BUILD="$(BUILD)" ./make/render_all.sh
 upgrade:    ; @NO_BRANCH="$(NO_BRANCH)" FORCE="$(FORCE)" ./make/upgrade.sh run $(ARGS)
 upgrade-guess: ; @WRITE="$(WRITE)" GUESS_LIMIT="$(GUESS_LIMIT)" ./make/upgrade.sh guess $(ARGS)
