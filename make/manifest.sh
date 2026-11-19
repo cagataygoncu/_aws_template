@@ -14,7 +14,9 @@ set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 template_dir=$(dirname "$script_dir")
-manifest_file="$template_dir/template_manifest.txt"
+# MANIFEST_FILE reads another version's rules: an upgrade classifies with the
+# manifest of the version it upgrades to.
+manifest_file="${MANIFEST_FILE:-$template_dir/template_manifest.txt}"
 
 # The rules, in file order, as two parallel arrays.
 rule_classes=()

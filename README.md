@@ -37,7 +37,10 @@ _aws_template/
 │   └── src/, tests/, targets/*/Dockerfile, .devcontainer/, .vscode/, environment.yaml
 ├── make/
 │   ├── bootstrap.sh        # make new
-│   └── manifest.sh         # make classify, make check-manifest
+│   ├── manifest.sh         # make classify, make check-manifest
+│   ├── render.sh           # render one project from any version (a tag, a commit, or .)
+│   ├── render_all.sh       # make render-all
+│   └── upgrade.sh          # make upgrade, make upgrade-guess
 ├── template_manifest.txt   # who owns each generated file
 ├── Makefile, README.md, NOTES.md, UPGRADING.md
 ```
@@ -54,7 +57,14 @@ make languages                                 # folders with a layer.env
 make check                                     # script syntax + check-manifest
 make classify src/main.py                      # owner: template, seed or stamp
 make template-version [vX.Y.Z]                 # gig-cfn-templates release _base/ ships
+make render-all [REF=v1.0.0] [LINT=1] [BUILD=1]  # render and check every language
+make upgrade ../my_project [v1.1.0]            # merge a release into a project, on a branch
+make upgrade-guess ../old_project [WRITE=1]    # stamp a project made before stamps
 ```
+
+Three skills drive these: `cg-aws-template-new`, `cg-aws-template-release`
+(check, diff what projects receive, write notes, tag) and
+`cg-aws-template-upgrade` (upgrade, resolve conflicts, port seed changes).
 
 A generated project has its own `make help`. The commands you use most:
 `make local-dev-setup`, `make lint`, `make local-build`, `make local-run`,
@@ -97,10 +107,11 @@ A generated project has its own `make help`. The commands you use most:
 | elixir | `elixir = "1.19"`, `erlang = "27"` | lambda, task, server |
 
 - `_base/` ships `gig-cfn-templates` `v1.10.16`.
-- The upgrade mechanism is in progress. Done: the stamp, `layer.env`, the
-  ownership manifest, and `mise.toml` versions. Next: the first release tag,
-  `make render-all`, `make upgrade`, and skills to create, release and upgrade
-  projects.
+- Releases are tagged; `v1.0.0` is the first, and the baseline for upgrades.
+- `make upgrade` merges `template` files 3-way, keeps a version the project
+  chose in `mise.toml`, and writes `report.md` and `seed.patch` to the
+  project's `.git/template-upgrade/<version>/`. See NOTES.md, **Upgrading a
+  project that already exists**.
 
 ## Where the details are
 

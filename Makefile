@@ -10,6 +10,9 @@
 #   make template-version [version]           gig-cfn-templates release _base/ ships
 #   make check                                shell + Makefile syntax, manifest
 #   make classify src/main.py                 who owns a project file
+#   make render-all [REF=v1.0.0] [LINT=1]     render and check every language
+#   make upgrade ../my_project [v1.1.0]       merge a newer release into a project
+#   make upgrade-guess ../old_project         which version an unstamped project is on
 #
 # `new` is a pass-through to ./make/bootstrap.sh, which holds the logic.
 
@@ -36,7 +39,8 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help new languages template-version check check-manifest classify
+.PHONY: help new languages template-version check check-manifest classify render-all \
+        upgrade upgrade-guess
 
 help:
 	@echo "usage: make <target> [arguments]"
@@ -51,6 +55,12 @@ help:
 	@echo "  check-manifest                                      every generated file has an"
 	@echo "                                                      owner in template_manifest.txt"
 	@echo "  classify  <path>...                                 owner of a project path"
+	@echo "  render-all                                          render every language and check it;"
+	@echo "            REF=<tag> OUT=<dir> LANGUAGES=\"a b\" LINT=1 BUILD=1"
+	@echo "  upgrade   <project_dir> [ref]                       merge a release (default: latest tag)"
+	@echo "            into a project, on a new branch; NO_BRANCH=1 FORCE=1"
+	@echo "  upgrade-guess <project_dir>                         rank template commits against an"
+	@echo "            unstamped project; WRITE=1 stamps the best match"
 	@echo ""
 	@echo "A generated project has its own Makefile: cd into it and run 'make help'."
 
@@ -64,7 +74,7 @@ languages: ; @for layer in */layer.env; do echo "  - $${layer%/layer.env}"; done
 template-version: ; @cd _base && ./make/commands.sh template-version $(ARGS)
 
 check:
-	@for script in make/bootstrap.sh make/manifest.sh _base/make/commands.sh _base/make/versions.sh; do \
+	@for script in make/*.sh _base/make/commands.sh _base/make/versions.sh; do \
 	    bash -n "$$script" && echo "ok  $$script"; \
 	done
 	@zsh -n _base/make/setup_local_dev_env.sh && echo "ok  _base/make/setup_local_dev_env.sh"
@@ -73,3 +83,9 @@ check:
 
 check-manifest: ; @./make/manifest.sh check
 classify:       ; @./make/manifest.sh classify $(ARGS)
+
+# Passed explicitly, so a value set on the command line reaches the script
+# whatever make's export rules say.
+render-all: ; @REF="$(REF)" OUT="$(OUT)" LANGUAGES="$(LANGUAGES)" LINT="$(LINT)" BUILD="$(BUILD)" ./make/render_all.sh
+upgrade:    ; @NO_BRANCH="$(NO_BRANCH)" FORCE="$(FORCE)" ./make/upgrade.sh run $(ARGS)
+upgrade-guess: ; @WRITE="$(WRITE)" GUESS_LIMIT="$(GUESS_LIMIT)" ./make/upgrade.sh guess $(ARGS)

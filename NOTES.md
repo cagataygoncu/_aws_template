@@ -732,9 +732,51 @@ project's `mise.toml`. A render from uncommitted template
 changes is marked `TEMPLATE_DIRTY=true` and cannot be repeated, so commit
 before `make new`. `template_manifest.txt` says who owns each generated file.
 
-[UPGRADING.md](UPGRADING.md) is the procedure — what to copy verbatim,
-what to merge by hand, what never to touch — worked through with
-`aws-service-template` as the example.
+`make upgrade <project_dir> [ref]` (`make/upgrade.sh run`) does the upgrade.
+The ref defaults to the latest tag:
+
+1. It re-renders the project's recorded commit and the target ref with the
+   same answers. `make/render.sh` renders any ref from `git archive`, using
+   that version's own `bootstrap.sh`, so old versions render by their old
+   rules.
+2. It merges `mise.toml` first. Where the project and the template both
+   changed a line, the project's value wins, and the report names the
+   template's new default. Both renders' `mise-sync` lines are then
+   rewritten from the merged file, so version lines never conflict.
+3. It classifies every path with the **target** version's manifest:
+   - `template`: replaced if the project never touched it, otherwise run
+     through `git merge-file`. Clashing edits get conflict markers labelled
+     `project`, `template <old>` and `template <new>`.
+   - `seed`: added if new, otherwise left alone, with the template's change
+     appended to `seed.patch`.
+   - A file the project deleted stays deleted.
+   - A path no rule covers is treated as `seed`.
+4. It runs `versions.sh sync` and rewrites `.template.env` for the new
+   commit.
+
+It refuses to run on a dirty project, a `TEMPLATE_DIRTY=true` stamp, or a
+downgrade; `FORCE=1` overrides the last two. It works on a new branch,
+`template-upgrade/<version>` (`NO_BRANCH=1` to stay put), and commits
+nothing. The report and `seed.patch` go to
+`.git/template-upgrade/<version>/`, where they cannot be committed by
+accident. It exits 1 when conflicts remain.
+
+A project made before stamps existed gets one from `make upgrade-guess
+<project_dir>`. It renders recent commits (`GUESS_LIMIT`, default 30) with the
+project's language and name. It ranks them by differing lines in
+template-owned files, counting a template file the render lacks as all its
+lines. Ties go to the newer commit. `WRITE=1` stamps the best match.
+
+`make render-all` is the release check. It renders every language
+(`REF=<tag>` for a past release) and checks placeholders, versions, script
+syntax, JSON and cfn-lint. `LINT=1` adds each project's `make lint`, and
+`BUILD=1` adds `make local-build`. A check without its tool is reported as
+skipped. Render two refs with `OUT=<dir>` and `diff -r` the results to see
+what projects will receive.
+
+[UPGRADING.md](UPGRADING.md) is the manual procedure and the per-release list
+of changes: what to copy verbatim, what to merge by hand, what never to touch.
+It is worked through with `aws-service-template` as the example.
 
 ## Maintenance philosophy
 

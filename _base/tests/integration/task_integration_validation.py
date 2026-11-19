@@ -1,6 +1,6 @@
 import json
 import logging
-from src.utilities import get_json
+
 import requests
 
 logging.basicConfig(level=logging.INFO)
@@ -11,7 +11,7 @@ def validate_api(example_requests, base_url, headers):
     for key, value in example_requests.items():
         for sub_key, sub_value in value.items():
             request_data = None
-            updated_url = f"{base_url}/{sub_key}{sub_value.get('parameters','')}"
+            updated_url = f"{base_url}/{sub_key}{sub_value.get('parameters', '')}"
             logging.info(f"Updated URL: {updated_url}")
             if key in ["PUT", "POST", "DELETE"]:
                 request_data = sub_value
@@ -23,12 +23,15 @@ def validate_api(example_requests, base_url, headers):
             data = json.loads(response.text)
             response_key = f"{key.lower()}_{sub_key}"
             responses[response_key] = data
-            logging.info(f"Data for {key}: {sub_key}: {json.dumps(data,indent =4)}")
+            logging.info(f"Data for {key}: {sub_key}: {json.dumps(data, indent=4)}")
     return responses
 
 
 if __name__ == "__main__":
-    example_requests = get_json("tests/integration/example_requests.json")
+    # Read directly: src.utilities, which this once imported for get_json, is
+    # in no language layer, so the import failed in every project.
+    with open("tests/integration/example_requests.json") as file:
+        example_requests = json.load(file)
     headers = {
         "accept": "application/json",
         "X-API-Key": "NaQwVTKDrNCHLFYvQoevdHwngZiKjE",
@@ -43,6 +46,6 @@ if __name__ == "__main__":
 
     for key, value in results.items():
         if not value:
-            logging.info(f"Some API endpoints unsuccessful: {json.dumps(results,indent =4)}")
+            logging.info(f"Some API endpoints unsuccessful: {json.dumps(results, indent=4)}")
             raise ValueError(f"Response object did not pass test for response: {key} with value: {value}")
-    logging.info(f"All API Endpoints testing successfully: {json.dumps(results,indent =4)}")
+    logging.info(f"All API Endpoints testing successfully: {json.dumps(results, indent=4)}")

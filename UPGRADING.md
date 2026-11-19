@@ -1,5 +1,23 @@
 # Upgrading an existing project
 
+## The automated way (v1.0.0 and later)
+
+```zsh
+make upgrade-guess "$PROJECT" WRITE=1    # only if the project has no .template.env
+make upgrade "$PROJECT"                  # to the latest tag; or: make upgrade "$PROJECT" v1.1.0
+```
+
+`make upgrade` does the copying and merging described below, file by file, on
+a new branch. It writes a report and a `seed.patch` into the project's
+`.git/template-upgrade/<version>/`. You resolve the conflicts it marks, port
+`seed.patch` by hand, then run `make lint`. The `cg-aws-template-upgrade`
+skill walks through all of it. How it decides is in NOTES.md, **Upgrading a
+project that already exists**. The rest of this file is the manual procedure
+it automates, and the per-release **Changes to expect**, which still say what
+each change means for a project.
+
+## The manual way
+
 Projects made with `make/bootstrap.sh` are **copies**, not clones — nothing links a
 generated project back to this template, so there is no `git pull` that brings
 template changes in. Upgrading is a deliberate, file-by-file copy, done by
@@ -304,6 +322,8 @@ project being upgraded; skip any group the project is already past.
 | **`.template.env`** — bootstrap records the template commit and the answers (`LANGUAGE`, `PROJECT_NAME`) a project was made from, so its render can be repeated. It holds no tool versions | add it by hand once this upgrade is done: the commit you upgraded to as `TEMPLATE_COMMIT` and `TEMPLATE_VERSION`, `TEMPLATE_DIRTY=false`, and the project's own answers. Copy the shape from a fresh `make new` |
 | **`mise.toml`** is the one record of the project's tool versions. `BaseImageURI` in `cicd_parameters.json` names the version as `${mise:<tool>}`, resolved by `commands.sh` and, at build time, by `buildspec.yaml`. Every other version line sits under a `mise-sync:` comment that `make sync-versions` rewrites; `make lint` fails while one is stale | copy `mise.toml` from the language layer and set the project's current versions in it. Copy `make/versions.sh`, `Makefile`, `make/commands.sh`, `make/setup_local_dev_env.sh`, `targets/common/buildspec.yaml` and `.devcontainer/`. Then replace the version in each `BaseImageURI` with its token (`public.ecr.aws/lambda/python:${mise:python}`), add the `mise-sync:` comments above the version lines (take them from a fresh `make new`), and run `make sync-versions && make lint` |
 | `make versions` lists the versions and the image each target resolves to | nothing to do |
+| `tests/integration/task_integration_validation.py` no longer imports `src.utilities` (in no language layer, so the import always failed) and passes ruff | copy it; it is template-owned |
+| **`make upgrade`** and **`make upgrade-guess`** at the template root automate this file | stamp the project (`make upgrade-guess ... WRITE=1`) and use them from now on |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
