@@ -4,7 +4,8 @@ channels:
     - nodefaults
 dependencies:
     # Matches the golang base image in targets/service/Dockerfile.
-    - go={{LANGUAGE_VERSION}}
+    # mise-sync: - go=${mise:go}
+    - go=${mise:go}
     # Language server and debugger the VS Code Go extension drives.
     - gopls
     - delve

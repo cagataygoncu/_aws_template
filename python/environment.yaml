@@ -3,7 +3,8 @@ channels:
     - conda-forge
     - nodefaults
 dependencies:
-    - python={{LANGUAGE_VERSION}}
+    # mise-sync: - python=${mise:python}
+    - python=${mise:python}
     - pip
     - pip:
           - -r requirements.txt

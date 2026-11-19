@@ -6,7 +6,7 @@ target-image variants beside it, in the *Reopen in Container* picker.
 ## What installs what
 
 - `Dockerfile` provides the language toolchain, pinned to the same version as
-  the target images (`language_version` in `make/bootstrap.sh`).
+  the target images (`mise.toml`, kept in step by `make sync-versions`).
 - `post_create.sh` installs the AWS CLI and the Docker CLI, both chosen by
   `uname -m` so they work in an amd64 or an arm64 image. There are no Python
   requirements files in this layer.

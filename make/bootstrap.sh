@@ -4,7 +4,7 @@
 # Usage:
 #     ./make/bootstrap.sh <language> <project_name> [destination_dir]
 #
-# <language>      one of: python | golang | typescript | cpp | nextjs | elixir
+# <language>      a folder with a layer.env: python | golang | typescript | cpp | nextjs | elixir
 # <project_name>  snake_case (e.g. my_cool_service)
 # [destination_dir]  optional; defaults to ../<project_name> relative to this script
 #
@@ -13,7 +13,10 @@
 #   2. Copies _base/ into the destination.
 #   3. Overlays <language>/ on top (rsync, language layer wins on conflicts).
 #   4. Substitutes a few common placeholders in text files, including the
-#      language's base container images.
+#      language's base container images. The values come from
+#      <language>/layer.env.
+#   5. Writes .template.env: the template version and the answers this
+#      project was made from, so the same render can be repeated later.
 
 set -euo pipefail
 
@@ -40,15 +43,14 @@ destination_dir=${3:-"$(dirname "$template_dir")/$project_name"}
 
 # ---- validation ---------------------------------------------------------
 
-valid_languages=(python golang typescript cpp nextjs elixir)
-language_ok=false
-for lang in "${valid_languages[@]}"; do
-    if [[ "$language" == "$lang" ]]; then
-        language_ok=true
-        break
-    fi
+# A language is any folder holding a layer.env, so adding one needs no edit
+# here. A project scaffolded inside the template has no layer.env (it is never
+# shipped), so it does not show up as a language.
+valid_languages=()
+for layer in "$template_dir"/*/layer.env; do
+    valid_languages+=("$(basename "$(dirname "$layer")")")
 done
-if [[ "$language_ok" != true ]]; then
+if [[ ! "$language" =~ ^[a-z]+$ || ! -f "$template_dir/$language/layer.env" ]]; then
     echo "Error: unknown language '$language'. Valid: ${valid_languages[*]}" >&2
     exit 2
 fi
@@ -64,22 +66,30 @@ language_dir="$template_dir/$language"
 # ---- language-specific deployment values ---------------------------------
 # The CFN target scaffolding is language-agnostic except for the handful of
 # values that name the language's own image and entrypoints. _base/ carries
-# placeholders; the language fills them in.
+# placeholders; <language>/layer.env fills them in. Every layer.env sets:
 #
-#   language_version     the toolchain version, single source for this
-#                        language: the image tags below are built from it and
-#                        it is substituted into environment.yaml, the
-#                        devcontainer Dockerfile and the lambda builder image.
-#                        Each default can be overridden for one project:
+#   language_tool        the mise.toml entry LANGUAGE_VERSION=... overrides.
+#                        Versions are not set here: they live in
+#                        <language>/mise.toml, which ships to the project and
+#                        stays its one record of them. One project can start
+#                        on another version:
 #                        make new python my_project LANGUAGE_VERSION=3.13
-#   otp_version          elixir only, the OTP release its image is tagged with
-#   base_image_lambda    runtime image the deployed function runs on
-#   base_image_service   image a long-running container is built on and runs on
+#                        (and OTP_VERSION=... for elixir's erlang entry)
+#   base_image_lambda    runtime image the deployed function runs on, as a
+#   base_image_service   pattern: image a long-running container runs on.
+#                        Both name the version as \${mise:<tool>}, resolved
+#                        from the project's mise.toml at build time
 #   container_cmd_lambda the handler the lambda base image invokes
 #   container_port       the port that image's app listens on (its EXPOSE)
 #   container_workdir    where that image leaves the built artefact
 #   container_*_task     how ECS starts the service/task target
 #   container_*_server   how ECS starts the service/server target
+#   run_*                shell-ready twins of the container_* values, for the
+#                        README's `make local-run` examples
+#   lint_tool, lint_command, lint_install    what `make lint` runs
+#   healthcheck_command  what the container health check runs; empty = none
+#   supported_targets    optional; the targets the layer can serve
+#   next_steps           the build/test line printed once the project exists
 #
 # The cmd values include their own YAML quoting, and a !Sub only where they
 # reference a CloudFormation parameter - an unnecessary !Sub is a cfn-lint
@@ -88,216 +98,16 @@ language_dir="$template_dir/$language"
 # Which deployment targets this language layer can actually serve. Anything
 # not listed is deleted after the overlay rather than shipped broken: a target
 # directory that cannot build is worse than a missing one, because it looks
-# deployable until the pipeline fails. Overridden per language below.
+# deployable until the pipeline fails. A layer.env may override it.
 supported_targets="lambda service/task service/server"
 
-case "$language" in
-    python)
-        language_version="${LANGUAGE_VERSION:-3.12}"
-        base_image_lambda="public.ecr.aws/lambda/python:${language_version}"
-        base_image_service="public.ecr.aws/docker/library/python:${language_version}"
-        # src/ and lib/ sit at / with PYTHONPATH=/
-        container_cmd_lambda="src.main_lambda.lambda_handler_1"
-        container_port="5040"
-        container_workdir="/"
-        container_entrypoint_task="python"
-        container_cmd_task="'src/main_task.py'"
-        container_entrypoint_server="uvicorn"
-        container_cmd_server="!Sub 'src.main_server:app --host 0.0.0.0 --port \${ContainerPort}'"
-        # Shell-ready twins of the container_* values above, for the README's
-        # `make local-run` examples: those carry CloudFormation quoting, and python's
-        # server value is a !Sub expression, so neither can be pasted.
-        run_entrypoint_task="python"
-        run_cmd_task="src/main_task.py"
-        run_entrypoint_server="uvicorn"
-        run_cmd_server="src.main_server:app --host 0.0.0.0 --port ${container_port}"
-        run_cmd_lambda="src.main_lambda.lambda_handler_1"
-        # `make lint` - the static checks this language runs before a
-        # build. Empty would mean the project has no linter.
-        lint_tool="ruff"
-        lint_command="ruff check . && ruff format --check ."
-        lint_install="pip install ruff, or conda install -c conda-forge ruff"
-        # What the container health check runs; empty means none. It probes
-        # the process's own health endpoint through the same program, so no
-        # curl is needed in the image and the port and path stay in one place.
-        healthcheck_command="python src/healthcheck.py"
-        ;;
-    golang)
-        # 1.26 is the floor: aws-lambda-go v1.55 and gopls both require it.
-        language_version="${LANGUAGE_VERSION:-1.26}"
-        base_image_lambda="public.ecr.aws/lambda/provided:al2023"
-        base_image_service="public.ecr.aws/docker/library/golang:${language_version}-bookworm"
-        # A compiled binary takes no arguments, but the ECS module splits the
-        # cmd into the container's Command and cannot take an empty one - so
-        # env runs the binary, exec-ing it, which keeps it PID 1.
-        container_cmd_lambda="bootstrap"
-        container_port="5040"
-        container_workdir="/app/build"
-        container_entrypoint_task="/usr/bin/env"
-        # One binary per entrypoint, the same shape as python's
-        # src/main_task.py and src/main_server.py - so the command picks the
-        # target rather than the binary having to work out which it is.
-        container_cmd_task="'/app/build/task'"
-        container_entrypoint_server="/usr/bin/env"
-        container_cmd_server="'/app/build/server'"
-        # Shell-ready twins of the container_* values above, for the README's
-        # `make local-run` examples: those carry CloudFormation quoting, and python's
-        # server value is a !Sub expression, so neither can be pasted.
-        run_entrypoint_task="/usr/bin/env"
-        run_cmd_task="/app/build/task"
-        run_entrypoint_server="/usr/bin/env"
-        run_cmd_server="/app/build/server"
-        run_cmd_lambda="bootstrap"
-        # `make lint` - the static checks this language runs before a
-        # build. Empty would mean the project has no linter.
-        lint_tool="go"
-        # gofmt -l exits 0 whatever it finds, so the grep is what fails the
-        # command - and it still prints which files need formatting.
-        lint_command="go vet ./... && ! gofmt -l src tests | grep ."
-        lint_install="the Go toolchain is the linter here - install Go, or open the devcontainer"
-        # What the container health check runs; empty means none. It probes
-        # the process's own health endpoint through the same program, so no
-        # curl is needed in the image and the port and path stay in one place.
-        healthcheck_command="/app/build/server -healthcheck"
-        ;;
-    cpp)
-        # No single toolchain version: the images are named by distro release.
-        language_version="${LANGUAGE_VERSION:-bookworm}"
-        base_image_lambda="public.ecr.aws/lambda/provided:al2023"
-        base_image_service="public.ecr.aws/docker/library/debian:${language_version}"
-        container_cmd_lambda="bootstrap"
-        container_port="5040"
-        container_workdir="/app/build"
-        container_entrypoint_task="/usr/bin/env"
-        container_cmd_task="'/app/build/main'"
-        container_entrypoint_server="/usr/bin/env"
-        container_cmd_server="'/app/build/main'"
-        # Shell-ready twins of the container_* values above, for the README's
-        # `make local-run` examples: those carry CloudFormation quoting, and python's
-        # server value is a !Sub expression, so neither can be pasted.
-        run_entrypoint_task="/usr/bin/env"
-        run_cmd_task="/app/build/main"
-        run_entrypoint_server="/usr/bin/env"
-        run_cmd_server="/app/build/main"
-        run_cmd_lambda="bootstrap"
-        # `make lint` - the static checks this language runs before a
-        # build. Empty would mean the project has no linter.
-        lint_tool="clang-format"
-        # \$( ) escaped so bootstrap writes the substitution out rather than
-        # running it here, where there is no src/ to find.
-        lint_command="clang-format --dry-run --Werror \$(find src tests -name '*.cpp' -o -name '*.hpp' -o -name '*.h')"
-        lint_install="apt-get install clang-format, or brew install clang-format"
-        # No health check: this layer serves no HTTP, so there is nothing to
-        # probe. Empty leaves the container without one, which is honest.
-        healthcheck_command=""
-        ;;
-    typescript)
-        language_version="${LANGUAGE_VERSION:-22}"
-        base_image_lambda="public.ecr.aws/lambda/nodejs:${language_version}"
-        base_image_service="public.ecr.aws/docker/library/node:${language_version}-bookworm-slim"
-        # tsc keeps the source tree under build/, so src/main_task.ts becomes
-        # build/src/main_task.js - the path the images run.
-        container_cmd_lambda="build/src/main_lambda.handler"
-        container_port="5040"
-        container_workdir="/app"
-        container_entrypoint_task="node"
-        container_cmd_task="'build/src/main_task.js'"
-        container_entrypoint_server="node"
-        container_cmd_server="'build/src/main_server.js'"
-        # Shell-ready twins of the container_* values above, for the README's
-        # `make local-run` examples: those carry CloudFormation quoting, and python's
-        # server value is a !Sub expression, so neither can be pasted.
-        run_entrypoint_task="node"
-        run_cmd_task="build/src/main_task.js"
-        run_entrypoint_server="node"
-        run_cmd_server="build/src/main_server.js"
-        run_cmd_lambda="build/src/main_lambda.handler"
-        # `make lint` - the static checks this language runs before a
-        # build. Empty would mean the project has no linter.
-        lint_tool="npx"
-        # Types first: eslint checks style, not types, and a type error is the
-        # one that stops the build.
-        lint_command="npx tsc --noEmit && npx eslint ."
-        lint_install="install Node, or open the devcontainer"
-        # What the container health check runs; empty means none. It probes
-        # the process's own health endpoint through the same program, so no
-        # curl is needed in the image and the port and path stay in one place.
-        healthcheck_command="node build/src/main_server.js --healthcheck"
-        ;;
-    nextjs)
-        language_version="${LANGUAGE_VERSION:-20}"
-        base_image_lambda="public.ecr.aws/lambda/nodejs:${language_version}"
-        base_image_service="public.ecr.aws/docker/library/node:${language_version}-bookworm-slim"
-        container_cmd_lambda="src/lambda.handler"
-        container_port="3000"
-        container_workdir="/app"
-        container_entrypoint_task="node"
-        container_cmd_task="'server.mjs'"
-        container_entrypoint_server="node"
-        container_cmd_server="'server.mjs'"
-        # Shell-ready twins of the container_* values above, for the README's
-        # `make local-run` examples: those carry CloudFormation quoting, and python's
-        # server value is a !Sub expression, so neither can be pasted.
-        run_entrypoint_task="node"
-        run_cmd_task="server.mjs"
-        run_entrypoint_server="node"
-        run_cmd_server="server.mjs"
-        run_cmd_lambda="src/lambda.handler"
-        # `make lint` - the static checks this language runs before a
-        # build. Empty would mean the project has no linter.
-        # A Next.js app is a server. The lambda target existed but never
-        # worked - its Dockerfile ran src/lambda.handler, and no such file was
-        # ever built - so the layer does not offer it.
-        supported_targets="service/task service/server"
-        lint_tool="npx"
-        # tsc first: next lint checks style, not types, and a type error is the
-        # one that stops the build. .eslintrc.json ships with the layer so
-        # next lint does not stop to ask how to configure itself.
-        lint_command="npx tsc --noEmit && npm run lint"
-        lint_install="install Node, or open the devcontainer"
-        # What the container health check runs; empty means none. It probes
-        # the process's own health endpoint through the same program, so no
-        # curl is needed in the image and the port and path stay in one place.
-        healthcheck_command="node server.mjs --healthcheck"
-        ;;
-    elixir)
-        language_version="${LANGUAGE_VERSION:-1.19}"
-        otp_version="${OTP_VERSION:-27}"
-        base_image_lambda="public.ecr.aws/lambda/provided:al2023"
-        base_image_service="public.ecr.aws/docker/library/elixir:${language_version}-otp-${otp_version}"
-        # Release name: keep in step with the `app:` key in mix.exs.
-        container_cmd_lambda="bootstrap"
-        container_port="4000"
-        container_workdir="/app"
-        container_entrypoint_task="/app/bin/${project_name}"
-        container_cmd_task="'start'"
-        container_entrypoint_server="/app/bin/${project_name}"
-        container_cmd_server="'start'"
-        # Shell-ready twins of the container_* values above, for the README's
-        # `make local-run` examples: those carry CloudFormation quoting, and python's
-        # server value is a !Sub expression, so neither can be pasted.
-        run_entrypoint_task="/app/bin/${project_name}"
-        run_cmd_task="start"
-        run_entrypoint_server="/app/bin/${project_name}"
-        run_cmd_server="start"
-        run_cmd_lambda="bootstrap"
-        # `make lint` - the static checks this language runs before a
-        # build. Empty would mean the project has no linter.
-        lint_tool="mix"
-        lint_command="mix format --check-formatted && mix compile --warnings-as-errors"
-        lint_install="install Elixir, or open the devcontainer"
-        # No health check: this layer serves no HTTP yet - see the note in
-        # lib/app/application.ex about adding a web framework.
-        healthcheck_command=""
-        ;;
-esac
+# Each layer's values live in its own layer.env, not in a case block here, so
+# a future upgrade script can read exactly the values a past render used.
+# shellcheck source=/dev/null
+source "$language_dir/layer.env"
 
 if [[ ! -d "$base_dir" ]]; then
     echo "Error: _base/ not found at $base_dir" >&2
-    exit 4
-fi
-if [[ ! -d "$language_dir" ]]; then
-    echo "Error: $language/ not found at $language_dir" >&2
     exit 4
 fi
 if [[ -e "$destination_dir" ]]; then
@@ -333,6 +143,9 @@ rsync_excludes=(
     # it must not ship - and it would overwrite _base/README.md if it did,
     # since the language layer rsyncs second.
     --exclude='LAYER.md'
+    # The layer's placeholder values: input to this script, not project code.
+    # What a project needs to repeat the render is in .template.env instead.
+    --exclude='layer.env'
 )
 
 echo ">>> Copying _base/ -> destination"
@@ -381,6 +194,12 @@ sed_replacement() {
     printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
 }
 
+# Escaped once here, not once per file: each is a subshell and a sed.
+lint_tool_sed=$(sed_replacement "$lint_tool")
+lint_command_sed=$(sed_replacement "$lint_command")
+lint_install_sed=$(sed_replacement "$lint_install")
+healthcheck_command_sed=$(sed_replacement "$healthcheck_command")
+
 substitute_in_file() {
     local file=$1
     local tmp
@@ -389,8 +208,6 @@ substitute_in_file() {
     sed \
         -e "s/{{PROJECT_NAME}}/$project_name/g" \
         -e "s/{{LANGUAGE}}/$language/g" \
-        -e "s|{{LANGUAGE_VERSION}}|$language_version|g" \
-        -e "s|{{OTP_VERSION}}|${otp_version:-}|g" \
         -e "s|{{BASE_IMAGE_LAMBDA}}|$base_image_lambda|g" \
         -e "s|{{BASE_IMAGE_SERVICE}}|$base_image_service|g" \
         -e "s|{{CONTAINER_CMD_LAMBDA}}|$container_cmd_lambda|g" \
@@ -405,10 +222,10 @@ substitute_in_file() {
         -e "s|{{RUN_ENTRYPOINT_SERVER}}|$run_entrypoint_server|g" \
         -e "s|{{RUN_CMD_SERVER}}|$run_cmd_server|g" \
         -e "s|{{RUN_CMD_LAMBDA}}|$run_cmd_lambda|g" \
-        -e "s|{{LINT_TOOL}}|$(sed_replacement "$lint_tool")|g" \
-        -e "s|{{LINT_COMMAND}}|$(sed_replacement "$lint_command")|g" \
-        -e "s|{{LINT_INSTALL}}|$(sed_replacement "$lint_install")|g" \
-        -e "s|{{HEALTHCHECK_COMMAND}}|$(sed_replacement "$healthcheck_command")|g" \
+        -e "s|{{LINT_TOOL}}|$lint_tool_sed|g" \
+        -e "s|{{LINT_COMMAND}}|$lint_command_sed|g" \
+        -e "s|{{LINT_INSTALL}}|$lint_install_sed|g" \
+        -e "s|{{HEALTHCHECK_COMMAND}}|$healthcheck_command_sed|g" \
         "$file" > "$tmp" && cat "$tmp" > "$file"
     # cat back into the original rather than mv over it: mv gives the file
     # mktemp's 0600, which silently stripped the executable bit from
@@ -418,7 +235,7 @@ substitute_in_file() {
 
 echo ">>> Substituting placeholders (project name, language, images, entrypoints)"
 while IFS= read -r -d '' file; do
-    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|LANGUAGE_VERSION|OTP_VERSION|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+|HEALTHCHECK_COMMAND)\}\}' "$file" 2>/dev/null; then
+    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+|HEALTHCHECK_COMMAND)\}\}' "$file" 2>/dev/null; then
         substitute_in_file "$file"
     fi
 done < <(find "$destination_dir" -type f \
@@ -428,37 +245,80 @@ done < <(find "$destination_dir" -type f \
             -not -path '*/deps/*' \
             -print0)
 
+# ---- tool versions ----------------------------------------------------------
+# The project's mise.toml came with the layer. A version asked for on the
+# command line goes into it, then every synced line (Dockerfile FROM,
+# devcontainer.json, environment.yaml, ...) is written from it - the same
+# `make sync-versions` the project runs after its own version bumps.
+
+versions() {
+    (cd "$destination_dir" && ./make/versions.sh "$@")
+}
+
+echo ">>> Writing tool versions from mise.toml"
+if [[ -n "${LANGUAGE_VERSION:-}" ]]; then
+    versions set "$language_tool" "$LANGUAGE_VERSION" | sed 's/^/    /'
+fi
+if [[ -n "${OTP_VERSION:-}" ]]; then
+    versions set erlang "$OTP_VERSION" | sed 's/^/    /'
+fi
+versions sync > /dev/null
+
+# ---- stamp ----------------------------------------------------------------
+# .template.env records what this project was made from: the template commit
+# and the answers given here. That is all a later upgrade needs to repeat this
+# exact render, then the render of a newer version, and merge the difference
+# into the project. The layer values are not copied in: they follow from the
+# commit. Tool versions are not answers either: they live in the project's
+# mise.toml, which the template owns, so an upgrade moves a project that kept
+# the old default to the new one, and keeps a version the project chose.
+#
+# A render from uncommitted template changes cannot be repeated, so it is
+# marked dirty and warned about.
+
+template_version=unknown
+template_commit=unknown
+template_dirty=unknown
+if git -C "$template_dir" rev-parse --git-dir > /dev/null 2>&1; then
+    template_version=$(git -C "$template_dir" describe --tags --always)
+    template_commit=$(git -C "$template_dir" rev-parse HEAD)
+    if [[ -z "$(git -C "$template_dir" status --porcelain)" ]]; then
+        template_dirty=false
+    else
+        template_dirty=true
+    fi
+fi
+
+{
+    echo "# Written by _aws_template's make/bootstrap.sh; rewritten by a template"
+    echo "# upgrade. Records the template version and answers this project was"
+    echo "# generated from. Do not edit by hand."
+    printf 'TEMPLATE_VERSION=%q\n' "$template_version"
+    printf 'TEMPLATE_COMMIT=%q\n' "$template_commit"
+    printf 'TEMPLATE_DIRTY=%q\n' "$template_dirty"
+    printf 'LANGUAGE=%q\n' "$language"
+    printf 'PROJECT_NAME=%q\n' "$project_name"
+} > "$destination_dir/.template.env"
+
 echo
 echo "Done. Project scaffolded at:"
 echo "    $destination_dir"
 echo
-echo "Toolchain: ${language} ${language_version}${otp_version:+ / OTP ${otp_version}}"
-echo "    service image  ${base_image_service}"
-echo "    lambda image   ${base_image_lambda}"
+echo "Template:  ${template_version}"
+if [[ "$template_dirty" != false ]]; then
+    echo "    warning: the template had uncommitted changes (or is not a git"
+    echo "    checkout), so .template.env cannot reproduce this render. Commit"
+    echo "    the template first if this project is meant to be upgradable."
+fi
+echo "Toolchain (mise.toml):"
+versions show | sed 's/^/    /'
+echo "    service image  $(versions expand "$base_image_service")"
+echo "    lambda image   $(versions expand "$base_image_lambda")"
 echo
 echo "Next steps:"
 echo "    cd $destination_dir"
 echo "    make local-dev-setup && micromamba activate ./venv"
-case "$language" in
-    python)
-        echo "    python -m pytest tests/unit"
-        ;;
-    golang)
-        echo "    go mod tidy && go test ./tests/..."
-        ;;
-    cpp)
-        echo "    cmake -S . -B build && cmake --build build"
-        ;;
-    typescript)
-        echo "    npm install && npm run build && npm test"
-        ;;
-    nextjs)
-        echo "    npm install && npm run dev"
-        ;;
-    elixir)
-        echo "    mix deps.get && mix test"
-        ;;
-esac
+echo "    ${next_steps}"
 echo "    Open in VS Code -> Reopen in Container"
 echo
 echo "Then, in the new project:"

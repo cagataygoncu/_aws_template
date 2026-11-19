@@ -25,6 +25,12 @@ export LANGUAGE=python          # python | golang | typescript | cpp | nextjs | 
 The upgrade is only as safe as this table. Copy the first group without
 thinking; look at every file in the second; never touch the third.
 
+`template_manifest.txt` at the template root is the machine-readable form of
+this table, rule by rule, checked against every language by `make check`.
+`make classify <path>...` names the owner of a project path: `template` (the
+first three rows), `seed` (the project row) or `stamp` (`.template.env`).
+Where the table and the manifest disagree, the manifest is right.
+
 | Owner | Files | Action |
 |---|---|---|
 | **Template** (`_base/`) | `Makefile`, `make/setup_local_dev_env.sh`, `targets/common/{cicd,buildspec,buildspec_test}.yaml`, `.github/workflows/`, `.dockerignore`, `.gitignore`, `tests/integration/` | copy verbatim |
@@ -41,8 +47,8 @@ template's version, port the change, keep the project's values.
 arrived: it now carries `{{LINT_TOOL}}`, `{{LINT_COMMAND}}` and
 `{{LINT_INSTALL}}` near the top, filled in per language by `bootstrap.sh`.
 Copying it straight in leaves the placeholders, and `make lint` then reports
-`{{LINT_TOOL}} is not installed`. Take the values from the language's `case`
-block in `make/bootstrap.sh`.
+`{{LINT_TOOL}} is not installed`. Take the values from
+`<language>/layer.env`.
 
 `README.md` is template-owned now — `_base/README.md` documents every command
 and is bootstrapped into new projects. Projects that added their own notes
@@ -70,14 +76,14 @@ Where they appear, and what fills them:
 | Token | In | Filled from |
 |---|---|---|
 | `{{PROJECT_NAME}}`, `{{LANGUAGE}}` | `README.md`, `environment.yaml`, devcontainer | the `make new` arguments |
-| `{{LANGUAGE_VERSION}}`, `{{OTP_VERSION}}` | `environment.yaml`, Dockerfiles, `.vscode/` | `language_version` in the `case` block |
-| `{{BASE_IMAGE_LAMBDA}}`, `{{BASE_IMAGE_SERVICE}}` | `targets/*/cicd_parameters.json` | the `case` block |
-| `{{CONTAINER_*}}` | `targets/*/deployment.yaml` | the `case` block |
-| `{{RUN_*}}` | `README.md` | the `case` block — shell-ready twins of the `CONTAINER_*` values |
-| `{{LINT_TOOL}}`, `{{LINT_COMMAND}}`, `{{LINT_INSTALL}}` | `make/commands.sh` | the `case` block |
+| `{{LANGUAGE_VERSION}}`, `{{OTP_VERSION}}` (before 2026-11) | `environment.yaml`, Dockerfiles, `.vscode/` | now `${mise:<tool>}`, from `mise.toml` — see **Since 2026-11** |
+| `{{BASE_IMAGE_LAMBDA}}`, `{{BASE_IMAGE_SERVICE}}` | `targets/*/cicd_parameters.json` | `<language>/layer.env` |
+| `{{CONTAINER_*}}` | `targets/*/deployment.yaml` | `<language>/layer.env` |
+| `{{RUN_*}}` | `README.md` | `<language>/layer.env` — shell-ready twins of the `CONTAINER_*` values |
+| `{{LINT_TOOL}}`, `{{LINT_COMMAND}}`, `{{LINT_INSTALL}}` | `make/commands.sh` | `<language>/layer.env` |
 
-The `case` block in `make/bootstrap.sh` is the reference for all of them: one
-entry per language, holding the base images, the entrypoint ECS starts the
+`<language>/layer.env` is the reference for all of them: one file per
+language, holding the base images, the entrypoint ECS starts the
 container with, and the lint command.
 
 ## The upgrade
@@ -159,8 +165,7 @@ Then fill in the lint placeholders `make/commands.sh` arrived with:
 grep -n '{{LINT_' make/commands.sh
 ```
 
-Take the three values from the language's `case` block in
-`$TEMPLATE/make/bootstrap.sh` — for python that is `ruff`,
+Take the three values from `$TEMPLATE/$LANGUAGE/layer.env` — for python that is `ruff`,
 `ruff check . && ruff format --check .`, and the pip/conda install line.
 
 ### 4. Copy the language-owned files
@@ -184,8 +189,8 @@ If the project's `Dockerfile` has project-specific lines (an extra `apt-get`,
 a different `EXPOSE`), diff instead of copying and re-apply them.
 
 A layer that does not support every target has no Dockerfile to copy for it —
-`nextjs` has no `targets/lambda/`, for instance. `supported_targets` in the
-`case` block says which a layer offers.
+`nextjs` has no `targets/lambda/`, for instance. `supported_targets` in
+`layer.env` says which a layer offers.
 
 ### 5. Merge the project-owned files by hand
 
@@ -252,7 +257,7 @@ project being upgraded; skip any group the project is already past.
 | `tests/deployment/README.md` merged into the project's root `README.md` | merge, keeping the project's own notes |
 | `setup_local_dev_env.sh` moved to `_base/`, generalised, reachable as `make local-dev-setup` | copy over the old copy |
 | `environment.yaml` is now per language, not shared | copy from the language layer, substitute `{{PROJECT_NAME}}` |
-| `BaseImageURI` is per language — values in the `make/bootstrap.sh` `case` block | check the project's `cicd_parameters.json` matches its language |
+| `BaseImageURI` is per language — values in `<language>/layer.env` (once the `make/bootstrap.sh` `case` block) | check the project's `cicd_parameters.json` matches its language |
 | golang / cpp / elixir lambda Dockerfiles take a separate `BUILDER_IMAGE_URI` | copy the Dockerfile; the ARG has a working default |
 | `targets/service/server/cicd_parameters.json` pointed `DeploymentCfnFilename` at the nonexistent `targets/server/deployment.yaml` | fix the path if the project still has the bug |
 | `service/task_alb` removed — `service/task` (no ALB) and `service/server` (ALB + domain) are the two service targets | delete the directory; move to `service/server` if the project used it |
@@ -277,7 +282,7 @@ project being upgraded; skip any group the project is already past.
 | **`deployment_parameters.json`** per target — every deployment parameter, none with a template default. The pipeline passes it to CloudFormation as `TemplateConfiguration` | add the file; run `make validate` and it names anything still missing |
 | `ContainerPort` moved from the Makefile into `deployment_parameters.json` | delete `CONTAINER_PORT` from the Makefile; check the value matches the app's bind port |
 | **Command renames**: `build` → `local-build`, `run` → `local-run`, `config-upload` → `sync-config` | copy `Makefile` and `commands.sh`; update any scripts, CI or aliases that called the old names |
-| **`make lint`** — the language's own checks plus cfn-lint over every template | fill in `{{LINT_TOOL}}`, `{{LINT_COMMAND}}`, `{{LINT_INSTALL}}` in `commands.sh` from the `case` block |
+| **`make lint`** — the language's own checks plus cfn-lint over every template | fill in `{{LINT_TOOL}}`, `{{LINT_COMMAND}}`, `{{LINT_INSTALL}}` in `commands.sh` from `<language>/layer.env` |
 | **Target short names**: `lambda`, `task`, `server` resolve to the full path under `targets/` | optional — the full paths still work |
 | **One docker tag per target** (`<project>:lambda`, `<project>:service-task`) instead of a shared `:latest` | nothing to do; `docker rmi <project>:latest` reclaims the old one |
 | `make local-run` with no ENTRYPOINT/CMD prints the exact line for the target rather than running the image's default | nothing to do |
@@ -291,6 +296,15 @@ project being upgraded; skip any group the project is already past.
 | **New `typescript` layer** — a plain Node service, distinct from `nextjs` | nothing for existing projects |
 | **`nextjs` has no lambda target** — a layer now declares `supported_targets`, and unsupported ones are deleted at bootstrap | delete `targets/lambda` from a Next.js project; it never built |
 | `_base/README.md` is the project README, bootstrapped with `{{RUN_*}}` examples per language | copy it, then re-apply any project-specific notes |
+
+### Since 2026-11
+
+| Change | Action in the project |
+|---|---|
+| **`.template.env`** — bootstrap records the template commit and the answers (`LANGUAGE`, `PROJECT_NAME`) a project was made from, so its render can be repeated. It holds no tool versions | add it by hand once this upgrade is done: the commit you upgraded to as `TEMPLATE_COMMIT` and `TEMPLATE_VERSION`, `TEMPLATE_DIRTY=false`, and the project's own answers. Copy the shape from a fresh `make new` |
+| **`mise.toml`** is the one record of the project's tool versions. `BaseImageURI` in `cicd_parameters.json` names the version as `${mise:<tool>}`, resolved by `commands.sh` and, at build time, by `buildspec.yaml`. Every other version line sits under a `mise-sync:` comment that `make sync-versions` rewrites; `make lint` fails while one is stale | copy `mise.toml` from the language layer and set the project's current versions in it. Copy `make/versions.sh`, `Makefile`, `make/commands.sh`, `make/setup_local_dev_env.sh`, `targets/common/buildspec.yaml` and `.devcontainer/`. Then replace the version in each `BaseImageURI` with its token (`public.ecr.aws/lambda/python:${mise:python}`), add the `mise-sync:` comments above the version lines (take them from a fresh `make new`), and run `make sync-versions && make lint` |
+| `make versions` lists the versions and the image each target resolves to | nothing to do |
+| The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
 

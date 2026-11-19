@@ -4,4 +4,5 @@ channels:
     - nodefaults
 dependencies:
     # Matches the node base image in targets/service/Dockerfile. npm ships with it.
-    - nodejs={{LANGUAGE_VERSION}}
+    # mise-sync: - nodejs=${mise:node}
+    - nodejs=${mise:node}

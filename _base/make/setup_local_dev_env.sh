@@ -4,7 +4,8 @@
 #
 # The toolchain is described by environment.yaml, which each language layer
 # ships: a Python interpreter, a Go toolchain, a C++ compiler and CMake, Node,
-# or Elixir. Everything lands in ./venv, so nothing is installed system-wide
+# or Elixir. Its versions are synced from mise.toml before every run, so the
+# environment is built on the versions mise.toml declares. Everything lands in ./venv, so nothing is installed system-wide
 # and removing the project removes the environment with it.
 #
 #   ./make/setup_local_dev_env.sh     # or: make local-dev-setup
@@ -46,6 +47,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo "Error: $ENV_FILE not found"
     exit 1
 fi
+
+# mise.toml is the record; environment.yaml carries synced copies of it.
+./make/versions.sh sync
 
 if [[ -d "$ENV_PREFIX" ]]; then
     echo "Environment already exists at $ENV_PREFIX"

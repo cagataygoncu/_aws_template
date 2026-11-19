@@ -1,5 +1,6 @@
 # Matches the node base image in targets/service/Dockerfile.
-FROM public.ecr.aws/docker/library/node:{{LANGUAGE_VERSION}}-bookworm-slim
+# mise-sync: FROM public.ecr.aws/docker/library/node:${mise:node}-bookworm-slim
+FROM public.ecr.aws/docker/library/node:${mise:node}-bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \

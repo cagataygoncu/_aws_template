@@ -131,6 +131,8 @@ _aws_template/
 │   └── container_config.env                # the env file to upload to S3
 │
 ├── python/             # Python language layer
+│   ├── layer.env                             # placeholder values (every layer has one;
+│   │                                         #   never shipped, like LAYER.md)
 │   ├── src/, lib/, tests/unit/, .vscode/
 │   ├── requirements.txt                      # runtime deps: images AND devcontainer
 │   ├── .devcontainer/                        # VS Code: Reopen in Container
@@ -159,32 +161,52 @@ _aws_template/
 │   └── targets/{lambda,service}/Dockerfile   # mix release multi-stage
 │
 ├── make/
-│   └── bootstrap.sh    # scaffold a new project: _base/ + <language>/
+│   ├── bootstrap.sh    # scaffold a new project: _base/ + <language>/
+│   └── manifest.sh     # `make classify`, `make check-manifest`
 ├── Makefile            # `make new <language> <project>` → make/bootstrap.sh
+├── template_manifest.txt  # who owns each generated file: template, seed, stamp
 ├── UPGRADING.md        # sync an existing project with template changes
 └── README.md           # this file
 ```
 
 ### Tool versions
 
-Each language's toolchain version is written **once**, as `language_version` in
-the `case` block in `make/bootstrap.sh`, and everything else is built from it:
+Each language's tool versions are written **once**, in `<language>/mise.toml`.
+The file ships to every project and stays that project's one record of them:
 
-```bash
-python)
-    language_version="3.12"
-    base_image_lambda="public.ecr.aws/lambda/python:${language_version}"
-    base_image_service="public.ecr.aws/docker/library/python:${language_version}"
+```toml
+# python/mise.toml
+[tools]
+python = "3.12"
 ```
 
-`{{LANGUAGE_VERSION}}` is then substituted into the files that would otherwise
-repeat it — `environment.yaml`, the devcontainer Dockerfile, the lambda
-builder's `BUILDER_IMAGE_URI`, and the Python interpreter paths in
-`.vscode/settings.json`. Bumping Python to 3.13 for everyone is one edit, not
-six.
+Every other file names the version as `${mise:<tool>}` and gets it in one of
+two ways:
+
+| How | Files | When it resolves |
+|---|---|---|
+| **Read when used** | `BaseImageURI` in `targets/*/cicd_parameters.json` holds `public.ecr.aws/lambda/python:${mise:python}` | `make local-build`/`info` resolve it in `commands.sh`; the pipeline's `buildspec.yaml` resolves it at each build, so a pushed bump needs no `deploy-cicd` |
+| **Synced** | Dockerfile `FROM`/`ARG` defaults, `devcontainer.json`, `environment.yaml` (micromamba still installs the toolchain), `.vscode/settings.json`, `go.mod` — files that cannot read another file | `make/versions.sh sync` rewrites the line under each `mise-sync:` comment. It runs in `make local-dev-setup` and when a devcontainer opens; `make lint` fails while any line is stale |
+
+```dockerfile
+# mise-sync: FROM public.ecr.aws/docker/library/python:${mise:python}
+FROM public.ecr.aws/docker/library/python:3.12
+```
+
+Bumping Python to 3.13 for every new project is one edit, in
+`python/mise.toml`. In an existing project it is the same edit to its own
+`mise.toml`, then `make sync-versions`. `.template.env` records no versions,
+and the manifest makes `mise.toml` template-owned. A template upgrade
+therefore moves a project still on the old default to the new one, and keeps
+a version the project chose for itself.
+
+mise is not required: `make/versions.sh` reads `mise.toml` with awk, and the
+pipeline has no mise. If you do use mise, it reads the same file. cpp's
+version is a Debian release, which mise does not install, so it sits under
+`[vars]` rather than `[tools]`.
 
 For a single project — trying a version before the team moves to it — pass it
-to `make new` instead of editing the table:
+to `make new`. It is written into the new project's `mise.toml`:
 
 ```bash
 make new python my_match_stats LANGUAGE_VERSION=3.13
@@ -195,7 +217,8 @@ make new elixir my_event_router LANGUAGE_VERSION=1.20 OTP_VERSION=28
 on:
 
 ```
-Toolchain: python 3.13
+Toolchain (mise.toml):
+    python     3.13
     service image  public.ecr.aws/docker/library/python:3.13
     lambda image   public.ecr.aws/lambda/python:3.13
 ```
@@ -203,14 +226,14 @@ Toolchain: python 3.13
 Nothing checks that the version exists as an image tag — a wrong one fails at
 the first `make local-build` or devcontainer open, not at scaffold time.
 
-| Language | `language_version` | also |
+| Language | `mise.toml` | also |
 |----------|--------------------|------|
-| python   | `3.12`             | Ruff formats and lints it, per `ruff.toml` |
-| golang   | `1.26`             | |
-| typescript | `22`             | a plain Node service; `nextjs` is the web-app layer |
-| cpp      | `bookworm`         | a distro release, not a toolchain version |
-| nextjs   | `20`               | no lambda target — a Next.js app is a server |
-| elixir   | `1.19`             | `otp_version="27"` → `{{OTP_VERSION}}` |
+| python   | `python = "3.12"` | Ruff formats and lints it, per `ruff.toml` |
+| golang   | `go = "1.26"` | the floor: aws-lambda-go v1.55 and gopls need it |
+| typescript | `node = "22"` | a plain Node service; `nextjs` is the web-app layer |
+| cpp      | `debian = "bookworm"` under `[vars]` | a distro release, not a toolchain version |
+| nextjs   | `node = "20"` | no lambda target — a Next.js app is a server |
+| elixir   | `elixir = "1.19"`, `erlang = "27"` | `OTP_VERSION=...` sets erlang |
 
 Two versions deliberately stay put: `TemplateVersion` (the gig-cfn-templates
 release, which `make template-version` owns) and the `runtime-versions:` key in
@@ -225,7 +248,9 @@ each target builds `FROM`, passed to the pipeline as `BaseImageURI` and into the
 Dockerfile as `BASE_IMAGE_URI`. Rather than copy every
 `cicd_parameters.json` file into every language layer to change one line,
 `_base/` carries a placeholder and `make/bootstrap.sh` substitutes the language's
-image — the same mechanism as `{{PROJECT_NAME}}`:
+image pattern from `layer.env`, the same mechanism as `{{PROJECT_NAME}}`. The
+version in the pattern stays a `${mise:<tool>}` token, resolved at build time
+(see **Tool versions**); the defaults resolve to:
 
 | Language   | `{{BASE_IMAGE_LAMBDA}}`    | `{{BASE_IMAGE_SERVICE}}`                |
 |------------|----------------------------|-----------------------------------------|
@@ -695,7 +720,13 @@ Two things keep the commands honest:
 ## Upgrading a project that already exists
 
 Generated projects are copies, so template changes do not flow to them on their
-own. [UPGRADING.md](UPGRADING.md) is the procedure — what to copy verbatim,
+own. Each one carries `.template.env`, written by `bootstrap.sh`: the template
+commit it came from and the answers given (language, name, toolchain version),
+enough to repeat that exact render later. A render from uncommitted template
+changes is marked `TEMPLATE_DIRTY=true` and cannot be repeated, so commit
+before `make new`. `template_manifest.txt` says who owns each generated file.
+
+[UPGRADING.md](UPGRADING.md) is the procedure — what to copy verbatim,
 what to merge by hand, what never to touch — worked through with
 `aws-service-template` as the example.
 
@@ -717,19 +748,25 @@ what to merge by hand, what never to touch — worked through with
 ## Adding a new language
 
 1. Create a folder `<language>/` with the same shape as the existing ones.
-2. Add the language to the `valid_languages` array in `make/bootstrap.sh`.
-3. Add a case to the switch in `make/bootstrap.sh`: `language_version` first,
-   then `base_image_lambda` and `base_image_service` built from it — without
-   them the placeholders substitute to empty.
+2. Write `<language>/mise.toml` with the tool versions, and
+   `<language>/layer.env`, starting from existing ones. A `layer.env` is
+   what makes the folder a language: `make languages` and `bootstrap.sh`
+   both look for it. The variables are listed in `make/bootstrap.sh`.
+   `language_tool` names the `mise.toml` entry `LANGUAGE_VERSION=` sets;
+   `base_image_lambda` and `base_image_service` name the version as
+   `\${mise:<tool>}` — without them the placeholders substitute to empty.
+   Put every other version line under a `mise-sync:` comment.
+3. In the same file, set `container_workdir` and the four entrypoint/cmd
+   values — they must match that language's Dockerfile.
 4. Write `<language>/environment.yaml` describing the local toolchain, so
    `make local-dev-setup` works in the generated project.
-   The base-image case block also sets `container_workdir` and the four
-   entrypoint/cmd values — they must match that language's Dockerfile.
-5. Set `lint_tool`, `lint_command` and `lint_install` in the same case block,
-   so `make lint` has something to run. Set `supported_targets` too if the
+5. Set `lint_tool`, `lint_command` and `lint_install` in `layer.env`, so
+   `make lint` has something to run. Set `supported_targets` too if the
    layer cannot serve all three — anything not listed is deleted after the
    overlay rather than shipped broken.
-6. Add a case to the "Next steps" switch at the bottom of `make/bootstrap.sh`.
+6. Set `next_steps` in `layer.env`: the build/test line printed once the
+   project exists. Then run `make check`: it fails on any file the layer
+   ships that no rule in `template_manifest.txt` covers.
 7. Add any manifest the Dockerfiles `COPY` to `_base/.dockerignore`, which
    ignores everything by default — a missing entry fails the build at the
    `COPY` line with nothing but "not found".

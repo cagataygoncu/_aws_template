@@ -6,7 +6,8 @@
 # (build_platform() in make/commands.sh derives it from CodeBuildImage), so
 # they still match Fargate; fidelity to them comes from the service and lambda
 # variants, not from here.
-FROM public.ecr.aws/docker/library/golang:{{LANGUAGE_VERSION}}-bookworm AS builder
+# mise-sync: FROM public.ecr.aws/docker/library/golang:${mise:go}-bookworm AS builder
+FROM public.ecr.aws/docker/library/golang:${mise:go}-bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -55,7 +56,8 @@ RUN --mount=type=ssh \
     && go mod download
 
 ################################################################################################
-FROM public.ecr.aws/docker/library/golang:{{LANGUAGE_VERSION}}-bookworm AS release
+# mise-sync: FROM public.ecr.aws/docker/library/golang:${mise:go}-bookworm AS release
+FROM public.ecr.aws/docker/library/golang:${mise:go}-bookworm AS release
 
 
 ################################################################################################

@@ -10,7 +10,8 @@ ARG BASE_IMAGE_URI
 # The builder is a separate image from the runtime: this stage needs a Go
 # toolchain and apt, while the final stage must be the Lambda custom runtime
 # (provided.al2023) the function actually runs on.
-ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/golang:{{LANGUAGE_VERSION}}-bookworm
+# mise-sync: ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/golang:${mise:go}-bookworm
+ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/golang:${mise:go}-bookworm
 ARG ENV
 ARG DEBUG
 ARG GITHUB_TOKEN

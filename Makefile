@@ -8,14 +8,16 @@
 #   make new golang my_ranking_pipeline /tmp/rp
 #   make languages
 #   make template-version [version]           gig-cfn-templates release _base/ ships
-#   make check                                shell + Makefile syntax
+#   make check                                shell + Makefile syntax, manifest
+#   make classify src/main.py                 who owns a project file
 #
 # `new` is a pass-through to ./make/bootstrap.sh, which holds the logic.
 
 BOOTSTRAP := ./make/bootstrap.sh
 
 # Toolchain version for the new project, empty meaning the language's default
-# in make/bootstrap.sh. OTP_VERSION applies to elixir only.
+# in <language>/mise.toml. It is written into the new project's mise.toml,
+# which stays its one record. OTP_VERSION applies to elixir only.
 #
 #   make new python my_project LANGUAGE_VERSION=3.13
 LANGUAGE_VERSION ?=
@@ -34,7 +36,7 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help new languages template-version check
+.PHONY: help new languages template-version check check-manifest classify
 
 help:
 	@echo "usage: make <target> [arguments]"
@@ -44,22 +46,30 @@ help:
 	@echo "  languages                                           languages available"
 	@echo "  template-version [version]                          gig-cfn-templates release"
 	@echo "                                                      that _base/ ships"
-	@echo "  check                                               syntax-check the template"
+	@echo "  check                                               syntax-check the template,"
+	@echo "                                                      then check-manifest"
+	@echo "  check-manifest                                      every generated file has an"
+	@echo "                                                      owner in template_manifest.txt"
+	@echo "  classify  <path>...                                 owner of a project path"
 	@echo ""
 	@echo "A generated project has its own Makefile: cd into it and run 'make help'."
 
 new:       ; @$(BOOTSTRAP) $(ARGS)
-# Read out of make/bootstrap.sh rather than listed here, and rather than taken
-# from the directory listing, which also shows any project scaffolded in place.
-languages: ; @sed -n 's/^valid_languages=(\(.*\))$$/\1/p' $(BOOTSTRAP) | tr ' ' '\n' | sed 's|^|  - |'
+# A language is a folder with a layer.env - the same rule make/bootstrap.sh
+# uses. A project scaffolded in place has none, so it is not listed.
+languages: ; @for layer in */layer.env; do echo "  - $${layer%/layer.env}"; done
 
 # Runs inside _base/, which is a project layout as far as commands.sh cares:
 # it has targets/ and its own commands.sh.
 template-version: ; @cd _base && ./make/commands.sh template-version $(ARGS)
 
 check:
-	@for script in make/bootstrap.sh _base/make/commands.sh; do \
+	@for script in make/bootstrap.sh make/manifest.sh _base/make/commands.sh _base/make/versions.sh; do \
 	    bash -n "$$script" && echo "ok  $$script"; \
 	done
 	@zsh -n _base/make/setup_local_dev_env.sh && echo "ok  _base/make/setup_local_dev_env.sh"
 	@$(MAKE) --dry-run --directory=_base help > /dev/null && echo "ok  _base/Makefile"
+	@$(MAKE) --no-print-directory check-manifest
+
+check-manifest: ; @./make/manifest.sh check
+classify:       ; @./make/manifest.sh classify $(ARGS)

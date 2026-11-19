@@ -227,17 +227,26 @@ parameters_file() {
 #   parameter_value lambda DockerFilename          -> targets/lambda/Dockerfile
 #   parameter_value lambda BaseImageURI            -> public.ecr.aws/lambda/python:3.12
 #
+# A value naming a tool version as ${mise:<tool>} comes back resolved from
+# mise.toml: BaseImageURI holds public.ecr.aws/lambda/python:${mise:python},
+# so the version is written once, in mise.toml. deploy-cicd passes the
+# pattern itself to the pipeline, whose buildspec resolves it at build time.
+#
 parameter_value() {
-    local target=$1 key=$2 path
+    local target=$1 key=$2 path value
     require_command jq
 
     # Assigned first, not inlined: parameters_file exits on an unknown target,
     # and that exit has to fail this function rather than a subshell of it.
     path=$(parameters_file "$target") || exit 1
 
-    jq -r --arg key "$key" \
+    value=$(jq -r --arg key "$key" \
         '.[] | select(.ParameterKey == $key) | .ParameterValue' \
-        "$path"
+        "$path")
+    if [[ "$value" == *'${mise:'* ]]; then
+        value=$(./make/versions.sh expand "$value") || exit 1
+    fi
+    echo "$value"
 }
 
 # Print the local port a target's container is published on.
@@ -394,9 +403,35 @@ LINT_COMMAND="{{LINT_COMMAND}}"
 LINT_INSTALL="{{LINT_INSTALL}}"
 
 lint() {
+    lint_versions
+    echo
     lint_source
     echo
     lint_templates
+}
+
+# Every synced version line agrees with mise.toml. First, because a stale
+# Dockerfile FROM builds on the wrong toolchain without failing anything else.
+lint_versions() {
+    echo "running: ./make/versions.sh check"
+    ./make/versions.sh check
+}
+
+# The tool versions mise.toml declares, and the images they resolve to.
+versions() {
+    ./make/versions.sh show
+    echo
+    local target
+    # Bare names, not targets(): that one prints a bulleted list for people.
+    for target in $(find targets -name cicd_parameters.json \
+            | sed -e 's|^targets/||' -e 's|/cicd_parameters.json$||' | sort); do
+        printf '%-15s %s\n' "$target" "$(parameter_value "$target" BaseImageURI)"
+    done
+}
+
+# Rewrite every mise-sync line from mise.toml, after editing a version there.
+sync_versions() {
+    ./make/versions.sh sync
 }
 
 # The language layer's own checks - ruff, go vet, clang-format, whichever.
@@ -541,8 +576,15 @@ deploy_cicd() {
 
     validate "$target"
 
+    # The pipeline gets BaseImageURI as a pattern and resolves it from
+    # mise.toml at build time. Resolve it once here too, so a tool missing
+    # from mise.toml fails this command rather than the first build.
+    local base_image
+    base_image=$(parameter_value "$target" BaseImageURI) || exit 1
+
     echo ""
     echo "deploying ${CICD_STACK_NAME} (${target}) to ${AWS_PROFILE}"
+    echo "base image ${base_image} (resolved from mise.toml at each build)"
 
     # aws cloudformation deploy takes Key=Value overrides, not a parameters
     # file, so the JSON is flattened and ProjectName replaced.
@@ -2122,6 +2164,11 @@ usage: ./make/commands.sh <command> [arguments]
 
 project
   local-dev-setup                             create/update ./venv from environment.yaml
+                                              (synced from mise.toml first)
+  versions                                    tool versions in mise.toml, and
+                                              the base image each target builds on
+  sync-versions                               rewrite every mise-sync line from
+                                              mise.toml - run after editing it
   info           [target]                     resolved config for a target
   targets                                     deployment targets in this project
   template-version [version]                  gig-cfn-templates release of the
@@ -2131,7 +2178,8 @@ project
   help
 
 pipeline
-  lint                                        static checks: the source, and
+  lint                                        static checks: versions agree with
+                                              mise.toml, the source, and
                                               cfn-lint over every template
   validate       [target]                     cicd + deployment templates
   deploy-cicd    [target]                     create/update the pipeline stack
@@ -2213,6 +2261,8 @@ case "$command" in
     targets)        targets           ;;
     template-version) template_version "$@" ;;
     lint)           lint              ;;
+    versions)       versions          ;;
+    sync-versions)  sync_versions     ;;
     validate)       validate     "$@" ;;
     deploy-cicd)    deploy_cicd  "$@" ;;
     remote)         remote            ;;

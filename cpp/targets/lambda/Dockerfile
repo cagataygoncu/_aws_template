@@ -16,7 +16,8 @@ ARG BASE_IMAGE_URI
 # toolchain and apt, while the final stage must be the Lambda custom runtime
 # (provided.al2023) the function actually runs on. Point this at an AL2023
 # builder if the binary hits a glibc mismatch at runtime.
-ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/debian:{{LANGUAGE_VERSION}}
+# mise-sync: ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/debian:${mise:debian}
+ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/debian:${mise:debian}
 ARG ENV
 ARG DEBUG
 

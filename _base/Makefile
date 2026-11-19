@@ -116,12 +116,14 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help local-dev-setup info targets template-version aws-info lint validate config sync-config deploy-cicd remote push pipeline \
+.PHONY: help local-dev-setup versions sync-versions info targets template-version aws-info lint validate config sync-config deploy-cicd remote push pipeline \
         pipeline-stop upload outputs output-value url events logs delete-stack \
         delete-cicd delete-all local-build local-run invoke local-logs shell local-stop
 
 help:          ; @$(COMMANDS) help
 local-dev-setup: ; @$(COMMANDS) local-dev-setup
+versions:      ; @$(COMMANDS) versions
+sync-versions: ; @$(COMMANDS) sync-versions
 info:          ; @$(COMMANDS) info          $(ARGS)
 targets:       ; @$(COMMANDS) targets
 template-version: ; @$(COMMANDS) template-version $(ARGS)

@@ -40,7 +40,7 @@ RUN sed /^StrictHostKeyChecking/d /etc/ssh/ssh_config; \
 # GOTOOLCHAIN=local, which forbids fetching a newer toolchain to build them:
 #   gopls@v0.23.0 requires go >= 1.26.0 (running go 1.25.14; GOTOOLCHAIN=local)
 # GOTOOLCHAIN=auto lets the tool build with whatever it needs, while the
-# application below still builds with the pinned language_version.
+# application below still builds with the go version pinned in mise.toml.
 
 COPY ./src /app/src
 COPY ./go.mod /app/go.mod

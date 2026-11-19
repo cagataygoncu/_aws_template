@@ -1,0 +1,77 @@
+# template_manifest.txt - who owns each file of a generated project.
+#
+# Paths are as they appear in a generated project, not in _base/ or a layer.
+# One rule per line: <class> <pattern>. The first matching rule wins, so the
+# specific rules sit above the broad ones. `*` matches across `/`.
+# `make check-manifest` renders every language and fails on any file no rule
+# matches, so a new file cannot ship unclassified.
+#
+# Classes - what a template upgrade does with the file:
+#
+#   stamp     written by bootstrap, rewritten by every upgrade.
+#   template  the template owns it. An upgrade merges the template's change
+#             into it (3-way: old render, new render, project). Project edits
+#             survive; an edit that clashes shows as a merge conflict.
+#   seed      a starting point the project owns from then on. An upgrade
+#             creates it if missing; otherwise it only reports the template's
+#             change, for a person to port while keeping the project's values.
+
+stamp     .template.env
+
+# Template-owned files inside folders that are otherwise seed: the health
+# check plumbing the container images run, not application logic.
+template  src/healthcheck.py
+template  server.mjs
+
+# Project configuration and deployment values.
+seed      project.env
+seed      container_config.env
+seed      .env.local
+seed      targets/*/deployment.yaml
+seed      targets/*/cicd_parameters.json
+seed      targets/*/deployment_parameters.json
+
+# Application code, tests and dependencies.
+seed      src/*
+seed      lib/*
+seed      test/*
+seed      tests/unit/*
+seed      tests/__init__.py
+seed      requirements.txt
+seed      go.mod
+seed      go.sum
+seed      package.json
+seed      mix.exs
+seed      mix.lock
+seed      CMakeLists.txt
+seed      next.config.mjs
+seed      tailwind.config.ts
+
+# Build, deploy and developer tooling (_base/ and the language layers).
+template  Makefile
+template  make/*
+template  README.md
+template  .dockerignore
+template  .gitignore
+template  .github/*
+template  targets/common/*
+template  targets/lambda/Dockerfile
+template  targets/service/Dockerfile
+template  tests/integration/*
+template  environment.yaml
+# The tool versions. Template-owned so an upgrade moves a project still on the
+# old default to the new one; a version the project chose survives the merge.
+template  mise.toml
+template  .devcontainer/*
+template  .vscode/*
+
+# Per-language linter and compiler settings.
+template  ruff.toml
+template  tsconfig.json
+template  eslint.config.mjs
+template  .eslintrc.json
+template  next-env.d.ts
+template  postcss.config.mjs
+template  .formatter.exs
+template  .iex.exs
+template  .gdbinit

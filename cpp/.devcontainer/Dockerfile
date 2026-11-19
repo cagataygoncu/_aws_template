@@ -9,10 +9,11 @@
 # make/commands.sh); fidelity to them comes from the service and lambda
 # variants, not from here.
 #
-# The image itself is {{BASE_IMAGE_SERVICE}}, substituted at bootstrap from the
-# same value the deployed service image uses - debian:bookworm by default. It
+# The image is the deployed service image - debian:<release>, the release
+# being `debian` in mise.toml - kept in step by `make sync-versions`. It
 # was hardcoded to ubuntu:22.04, so the dev container and the deployed image
-# were different distributions and LANGUAGE_VERSION never reached this file.
+# were different distributions and the version never reached this file.
+# mise-sync: FROM {{BASE_IMAGE_SERVICE}} AS builder
 FROM {{BASE_IMAGE_SERVICE}} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -47,6 +48,7 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv
 RUN curl -L "https://raw.githubusercontent.com/scop/bash-completion/refs/heads/main/bash_completion" -o /etc/bash_completion
 
 ########################################################################################################
+# mise-sync: FROM {{BASE_IMAGE_SERVICE}} AS release
 FROM {{BASE_IMAGE_SERVICE}} AS release
 
 ENV DEBIAN_FRONTEND=noninteractive

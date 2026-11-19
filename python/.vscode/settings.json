@@ -7,8 +7,10 @@
     //   on the host       the extension discovers ./venv by itself
     //   in a container    devcontainer.json sets the image's interpreter
     //
-    "python.autoComplete.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python{{LANGUAGE_VERSION}}/site-packages"],
-    "python.analysis.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python{{LANGUAGE_VERSION}}/site-packages"],
+    // mise-sync: "python.autoComplete.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python${mise:python}/site-packages"],
+    "python.autoComplete.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python${mise:python}/site-packages"],
+    // mise-sync: "python.analysis.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python${mise:python}/site-packages"],
+    "python.analysis.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python${mise:python}/site-packages"],
     "files.exclude": {
         "**/*.pyc": {
             "when": "$(basename).py"

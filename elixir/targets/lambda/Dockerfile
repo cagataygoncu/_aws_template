@@ -16,7 +16,8 @@ ARG BASE_IMAGE_URI
 # Erlang and apt, while the final stage must be the Lambda custom runtime
 # (provided.al2023) the release actually runs on. The release embeds its ERTS,
 # so the two images do not have to match.
-ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/elixir:{{LANGUAGE_VERSION}}-otp-{{OTP_VERSION}}
+# mise-sync: ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/elixir:${mise:elixir}-otp-${mise:erlang}
+ARG BUILDER_IMAGE_URI=public.ecr.aws/docker/library/elixir:${mise:elixir}-otp-${mise:erlang}
 ARG ENV
 ARG DEBUG
 

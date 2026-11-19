@@ -1,10 +1,10 @@
 module main
 
-// Substituted at bootstrap from language_version, the same value that picks
-// the golang:<version>-bookworm image - so the module and the toolchain it is
-// built with cannot drift apart. Override per project:
-//   make new golang my_project LANGUAGE_VERSION=1.26
-go {{LANGUAGE_VERSION}}
+// Synced from `go` in mise.toml, the same value that picks the
+// golang:<version>-bookworm image - so the module and the toolchain it is
+// built with cannot drift apart. Edit mise.toml, then `make sync-versions`.
+// mise-sync: go ${mise:go}
+go ${mise:go}
 
 // gig_utils_go is private: the targets' Dockerfiles pass the ssh agent through
 // with --mount=type=ssh and rewrite the https url to git@. aws-lambda-go is

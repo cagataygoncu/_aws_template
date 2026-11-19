@@ -1,5 +1,6 @@
 # Matches the elixir base image in targets/service/Dockerfile.
-FROM public.ecr.aws/docker/library/elixir:{{LANGUAGE_VERSION}}-otp-{{OTP_VERSION}}
+# mise-sync: FROM public.ecr.aws/docker/library/elixir:${mise:elixir}-otp-${mise:erlang}
+FROM public.ecr.aws/docker/library/elixir:${mise:elixir}-otp-${mise:erlang}
 
 COPY ./.devcontainer/.bashrc /root/.bashrc
 

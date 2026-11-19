@@ -67,6 +67,10 @@ phases:
       # Create and use buildx builder with docker-container driver
       docker buildx create --name mybuilder --driver docker-container --use --bootstrap || docker buildx use mybuilder
 
+      # BaseImageURI names its version as ${mise:<tool>}: resolve it from
+      # the mise.toml in this commit, so a pushed version bump is built
+      # without redeploying the pipeline stack.
+      BASE_IMAGE_URI=$(bash make/versions.sh expand "$BASE_IMAGE_URI")
       echo "Building with BASE_IMAGE_URI = ${BASE_IMAGE_URI}"
       docker buildx build \
       --progress=plain \

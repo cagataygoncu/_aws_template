@@ -11,6 +11,7 @@
         "dockerfile": "../../targets/service/Dockerfile",
         "context": "../..",
         "args": {
+            // mise-sync: "BASE_IMAGE_URI": "{{BASE_IMAGE_SERVICE}}",
             "BASE_IMAGE_URI": "{{BASE_IMAGE_SERVICE}}",
             "ENV": "dev",
             "DEBUG": "true"

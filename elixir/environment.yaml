@@ -3,8 +3,10 @@ channels:
     - conda-forge
     - nodefaults
 dependencies:
-    # Same versions as the base image; both come from language_version /
-    # otp_version in make/bootstrap.sh.
+    # Same versions as the base image; both are synced from elixir and erlang
+    # in mise.toml.
     # conda-forge no longer ships elixir 1.17, which is why both are on 1.19.
-    - elixir={{LANGUAGE_VERSION}}
-    - erlang={{OTP_VERSION}}
+    # mise-sync: - elixir=${mise:elixir}
+    - elixir=${mise:elixir}
+    # mise-sync: - erlang=${mise:erlang}
+    - erlang=${mise:erlang}

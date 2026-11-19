@@ -1,0 +1,15 @@
+# mise.toml - the tool versions this project is built and developed with.
+#
+# The one place a version is written. Everything else reads it from here:
+# the deployed base images (BaseImageURI in targets/*/cicd_parameters.json,
+# expanded at build time), and every file with a `mise-sync:` comment, which
+# `make sync-versions` rewrites. `make lint` fails while any of them disagree.
+#
+# To move a version: edit it here, then `make sync-versions`.
+# micromamba still installs the toolchain (environment.yaml, kept in step by
+# the same sync); mise reads this file too if you use it.
+
+[vars]
+# Not a tool mise installs: the Debian release the images are built on,
+# which is what versions this layer (gcc, cmake and the rest come with it).
+debian = "bookworm"

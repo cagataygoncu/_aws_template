@@ -4,7 +4,8 @@
 # the pin - it only cost emulation speed on every pip install and test run.
 # The deployed images take their platform from the build command
 # (build_platform() in make/commands.sh), so they still match Fargate.
-FROM public.ecr.aws/docker/library/python:{{LANGUAGE_VERSION}}
+# mise-sync: FROM public.ecr.aws/docker/library/python:${mise:python}
+FROM public.ecr.aws/docker/library/python:${mise:python}
 
 RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN sed /^StrictHostKeyChecking/d /etc/ssh/ssh_config; \

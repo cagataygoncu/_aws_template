@@ -15,6 +15,7 @@
         "dockerfile": "../../targets/lambda/Dockerfile",
         "context": "../..",
         "args": {
+            // mise-sync: "BASE_IMAGE_URI": "{{BASE_IMAGE_LAMBDA}}",
             "BASE_IMAGE_URI": "{{BASE_IMAGE_LAMBDA}}",
             "ENV": "dev",
             "DEBUG": "true"

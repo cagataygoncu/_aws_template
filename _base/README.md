@@ -310,6 +310,29 @@ make local-dev-setup           # create/update ./venv from environment.yaml
 micromamba activate ./venv
 ```
 
+## Tool versions
+
+`mise.toml` is the only place this project writes a tool version. The base
+images (`BaseImageURI` in `targets/*/cicd_parameters.json`) name it as
+`${mise:<tool>}`. `make local-build` resolves that token, and so does the
+pipeline at each build. Every other copy sits under a `mise-sync:` comment:
+the devcontainer images, `environment.yaml`, `.vscode/settings.json` and
+`go.mod`.
+
+To move a version:
+
+```zsh
+# edit mise.toml, e.g. python = "3.13"
+make sync-versions             # rewrite every mise-sync line from mise.toml
+make versions                  # the versions, and the image each target uses
+make lint                      # fails while any synced line is stale
+```
+
+`make local-dev-setup` and opening the devcontainer both sync first. A
+devcontainer that finds stale lines stops and asks for a rebuild, because the
+editor has already read the old values. mise itself is optional: the scripts
+read `mise.toml` without it.
+
 ## Check what you are about to touch
 
 ```zsh
