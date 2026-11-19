@@ -322,8 +322,18 @@ project being upgraded; skip any group the project is already past.
 | **`.template.env`** — bootstrap records the template commit and the answers (`LANGUAGE`, `PROJECT_NAME`) a project was made from, so its render can be repeated. It holds no tool versions | add it by hand once this upgrade is done: the commit you upgraded to as `TEMPLATE_COMMIT` and `TEMPLATE_VERSION`, `TEMPLATE_DIRTY=false`, and the project's own answers. Copy the shape from a fresh `make new` |
 | **`mise.toml`** is the one record of the project's tool versions. `BaseImageURI` in `cicd_parameters.json` names the version as `${mise:<tool>}`, resolved by `commands.sh` and, at build time, by `buildspec.yaml`. Every other version line sits under a `mise-sync:` comment that `make sync-versions` rewrites; `make lint` fails while one is stale | copy `mise.toml` from the language layer and set the project's current versions in it. Copy `make/versions.sh`, `Makefile`, `make/commands.sh`, `make/setup_local_dev_env.sh`, `targets/common/buildspec.yaml` and `.devcontainer/`. Then replace the version in each `BaseImageURI` with its token (`public.ecr.aws/lambda/python:${mise:python}`), add the `mise-sync:` comments above the version lines (take them from a fresh `make new`), and run `make sync-versions && make lint` |
 | `make versions` lists the versions and the image each target resolves to | nothing to do |
-| `tests/integration/task_integration_validation.py` no longer imports `src.utilities` (in no language layer, so the import always failed) and passes ruff | copy it; it is template-owned |
-| **`make upgrade`** and **`make upgrade-guess`** at the template root automate this file | stamp the project (`make upgrade-guess ... WRITE=1`) and use them from now on |
+
+### Since v1.1.0
+
+Run `make upgrade <project> v1.1.0`. It applies the template-class row below
+on its own. Nothing in this release needs porting by hand.
+
+| Change | Action in the project |
+|---|---|
+| **`make upgrade`** and **`make upgrade-guess`** at the template root automate this file | stamp a project made before v1.0.0 with `make upgrade-guess <project> WRITE=1`, commit the stamp, then run `make upgrade` |
+| `tests/integration/task_integration_validation.py` (template) no longer imports `src.utilities`. That module is in no language layer, so the import always failed. The file now reads `example_requests.json` with `json.load` and passes the python layer's ruff | nothing: `make upgrade` merges it. If the project edited the same lines, resolve the conflict |
+| The same file's `X-API-Key` header is now a placeholder, `ExampleApiKey1234567890`. The literal key it used to carry is removed | if the project's copy still carries the old literal key, remove it and read the key from the environment. Treat the old key as exposed |
+| `make render-all` at the template root renders and checks every language; `make render-all REF=<tag>` renders a past release | nothing: template maintainers only |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far

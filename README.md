@@ -107,7 +107,9 @@ A generated project has its own `make help`. The commands you use most:
 | elixir | `elixir = "1.19"`, `erlang = "27"` | lambda, task, server |
 
 - `_base/` ships `gig-cfn-templates` `v1.10.16`.
-- Releases are tagged; `v1.0.0` is the first, and the baseline for upgrades.
+- Latest release: `v1.1.0`. Releases are tagged; `v1.0.0`, the first, is the
+  baseline for upgrades. Per-release changes are in UPGRADING.md, **Changes
+  to expect**.
 - `make upgrade` merges `template` files 3-way, keeps a version the project
   chose in `mise.toml`, and writes `report.md` and `seed.patch` to the
   project's `.git/template-upgrade/<version>/`. See NOTES.md, **Upgrading a
