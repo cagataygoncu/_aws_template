@@ -46,21 +46,11 @@ if __name__ == "__main__":
     base_url = "http://localhost:5040"
     responses = validate_api(example_requests, base_url, headers)
     results = {}
-    results["get_protected-get"] = (
-        responses["get_protected-get"]["result"] == "task_handler-fargate"
-    )
-    results["post_protected-post"] = (
-        responses["post_protected-post"]["result"] == "task_handler-fargate"
-    )
+    results["get_protected-get"] = responses["get_protected-get"]["result"] == "task_handler-fargate"
+    results["post_protected-post"] = responses["post_protected-post"]["result"] == "task_handler-fargate"
 
     for key, value in results.items():
         if not value:
-            logging.info(
-                f"Some API endpoints unsuccessful: {json.dumps(results, indent=4)}"
-            )
-            raise ValueError(
-                f"Response object did not pass test for response: {key} with value: {value}"
-            )
-    logging.info(
-        f"All API Endpoints testing successfully: {json.dumps(results, indent=4)}"
-    )
+            logging.info(f"Some API endpoints unsuccessful: {json.dumps(results, indent=4)}")
+            raise ValueError(f"Response object did not pass test for response: {key} with value: {value}")
+    logging.info(f"All API Endpoints testing successfully: {json.dumps(results, indent=4)}")
