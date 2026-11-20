@@ -352,6 +352,24 @@ Every language. Run `make upgrade <project> v1.2.0`; nothing needs porting by ha
 |---|---|
 | **`.gitignore`** (template) is now `_base/gitignore` + `<language>/gitignore`. The shared part ignores `/venv/` (the environment `make local-dev-setup` creates), OS and editor files, `.env`, `*.pem` and `*.log` | python, golang, cpp: nothing, `make upgrade` adds the file. typescript, nextjs, elixir: nothing, the shared entries merge in above the language's own |
 | python, golang and cpp get language entries for the first time: bytecode and tool caches, `build/` trees, debugger and test binaries | if the project already committed such files (a `venv/` or `build/`, say), remove them from git: `git rm -r --cached venv build` |
+
+### Since v2.0.0
+
+**Breaking.** mise replaces micromamba for the local toolchain. Every
+language. Run `make upgrade <project> v2.0.0`, then do the steps marked
+"by hand".
+
+| Change | Action in the project |
+|---|---|
+| **mise installs the toolchain.** `mise.toml` (template) now lists the tools too: cfn-lint everywhere, gopls and dlv for go, cmake, ninja and clang-format for cpp. `make local-dev-setup` runs `mise install`, and for python fills `./venv` | by hand, once per machine: install mise (`curl https://mise.run \| sh`) and add `eval "$(mise activate zsh)"` to `~/.zshrc`. Per project: move the old micromamba `./venv` aside (`mv venv venv.micromamba`), because mise creates a plain python venv there. Then run `make local-dev-setup` |
+| **`environment.yaml` is removed** (template) | nothing if the project never edited it: `make upgrade` deletes it. If the project added packages to it, the report keeps it. Move a command-line tool to `mise.toml`, a C library to `system_packages_build.txt` (or `system_packages.txt`), and a python package to `requirements.txt`. Then delete the file |
+| **`system_packages.txt`** (runtime) and **`system_packages_build.txt`** (build), Debian package names (seed) | nothing: `make upgrade` adds them with the packages the Dockerfiles used to name. By hand: if the project added `apt-get install` lines to its Dockerfiles, move those packages into the lists. The merged Dockerfiles install from the lists |
+| Every Dockerfile installs system packages with one shared step that reads the lists; the devcontainer installs both lists (template) | nothing, unless the project's own Dockerfile edits conflict. Then keep the shared step and move the packages into the lists |
+| `make` commands load mise's environment themselves, so `make lint` finds cfn-lint and the rest without shell activation | nothing |
+| cpp: **no lambda target.** It never built: nothing produced the `bootstrap` executable (seed files in `targets/lambda/`) | by hand: delete `targets/lambda` and `.devcontainer/lambda` unless the project built its own Lambda runtime. `seed.patch` shows the template's removal |
+| cpp: the builder installs `openssh-client`, for `ssh-keyscan` | nothing: it is in the new `system_packages_build.txt` |
+| elixir: the Dockerfiles no longer `COPY` a missing `config/` or `.formatter.exs`; builder stages set `ERL_FLAGS="+JMsingle true"`, so the build survives QEMU emulation on an arm64 Mac; the lambda release name is the project's, not `example` | nothing: `make upgrade` merges them. A project with `config/` adds `COPY config ./config` to its builder stage |
+| nextjs: `package-lock.json` (seed) ships, so `npm ci` works; `.dockerignore` lets `server.mjs` and the Next config files into the build | nothing if the project has its own lock file: it is left alone. Otherwise `make upgrade` adds the template's; run `npm install` to refresh it |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
