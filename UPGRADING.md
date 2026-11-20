@@ -391,6 +391,21 @@ Every language. Run `make upgrade <project> v2.1.1`, then `make local-dev-setup`
 | python: `.devcontainer/requirements_dev.txt` (template) pins `cfn-lint` and `ruff` from `mise.toml` through `mise-sync` lines | nothing: `make local-dev-setup` reinstalls them into `./venv` |
 | `make/versions.sh` reads quoted keys: `${mise:pipx:cfn-lint}` | nothing |
 | `make/commands.sh` puts `./venv` and the pinned tools first on PATH, so a tool from another environment (an old micromamba base, say) cannot shadow a pin | nothing. Outside `make`, the shell still decides: put `eval "$(mise activate zsh)"` after any other environment's activation in `~/.zshrc`, or remove micromamba's |
+
+### Since v2.2.0
+
+Every language. Run `make upgrade <project> v2.2.0`; then check the
+pipeline's test stage below.
+
+| Change | Action in the project |
+|---|---|
+| **`make test`** runs the unit tests in the service base image, at the versions in `mise.toml`, and writes a JUnit report to `reports/` (template: `make/commands.sh`, `Makefile`) | nothing: run it before you push. cpp and nextjs have no unit tests yet, so it reports that there is nothing to run |
+| **The pipeline's test stage works for every language.** `targets/common/buildspec_test.yaml` (template) runs `./make/commands.sh test`. It used to `pip install -r tests/requirements.txt`, which no project had, so a target with `RunTests` set to `"true"` failed its test stage | by hand, if the project turned `RunTests` off to get past that failure: set it back to `"true"` in `cicd_parameters.json` and run `make deploy-cicd <target>`. If the project edited `buildspec_test.yaml`, resolve the merge |
+| **`docs/development.md`** (with two diagrams) and **`docs/language.md`**: setup, the development loop, debugging, testing, the devcontainer, troubleshooting (template) | nothing: `make upgrade` adds them |
+| The project README's Quick start begins with `make local-dev-setup`, `make test` and `make lint` (template) | nothing |
+| `.gitignore` ignores `/reports/`, the JUnit output (template) | nothing |
+| cpp: the F5 configuration ran `build/cpp_sample`, which CMake never builds; it now builds, then debugs `build/main` (template: `.vscode/launch.json`) | nothing |
+| typescript: `make test` runs `npm install`, which writes `package-lock.json` if the project has none | commit the lock file |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
