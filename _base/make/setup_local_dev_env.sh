@@ -1,88 +1,74 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 #
-# setup_local_dev_env.sh - create or update the project's local dev environment.
+# setup_local_dev_env.sh - install the project's toolchain with mise.
 #
-# The toolchain is described by environment.yaml, which each language layer
-# ships: a Python interpreter, a Go toolchain, a C++ compiler and CMake, Node,
-# or Elixir. Its versions are synced from mise.toml before every run, so the
-# environment is built on the versions mise.toml declares. Everything lands in ./venv, so nothing is installed system-wide
-# and removing the project removes the environment with it.
+# mise.toml lists everything this project builds and develops with: the
+# language (python, go, node, elixir and erlang), and the command-line tools
+# `make lint` and the editor use (cfn-lint, gopls, cmake, ...). This installs
+# all of it with `mise install`. For a python project it also fills ./venv,
+# which mise creates, from requirements.txt and
+# .devcontainer/requirements_dev.txt.
 #
 #   ./make/setup_local_dev_env.sh     # or: make local-dev-setup
-#   ENV_PREFIX=./venv-3.13 ./make/setup_local_dev_env.sh
 #
-# Run from the project root. Overridable: ENV_PREFIX, ENV_FILE.
+# Safe to re-run: mise skips what is installed, pip what is satisfied. Run it
+# again after editing mise.toml or a requirements file.
 #
-# Needs micromamba:
+# A library mise cannot install - a C library, its headers - is not handled
+# here. List it in system_packages.txt (runtime) or system_packages_build.txt
+# (build only); the devcontainer and the deployed images install those.
 #
-#   "${SHELL}" <(curl -L micro.mamba.pm)
-#   micromamba self-update
+# Needs mise:
 #
-# Or on macOS: brew install micromamba
+#   curl https://mise.run | sh        # or: brew install mise
+#   echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
+#
+# Run from the project root.
 
-set -e
+set -euo pipefail
 
-ENV_PREFIX="${ENV_PREFIX:-./venv}"
-ENV_FILE="${ENV_FILE:-environment.yaml}"
-
-# Python projects pin their packages in requirements files rather than in
-# environment.yaml; other languages have none of these.
-PIP_REQUIREMENTS=()
-[[ -f requirements.txt ]] && PIP_REQUIREMENTS+=(-r requirements.txt)
-[[ -f .devcontainer/requirements_dev.txt ]] && PIP_REQUIREMENTS+=(-r .devcontainer/requirements_dev.txt)
-
-if ! command -v micromamba &> /dev/null; then
-    echo "Error: micromamba is not installed"
-    echo ""
-    echo "Install it with:"
-    echo '  "${SHELL}" <(curl -L micro.mamba.pm)'
-    echo "  micromamba self-update"
-    echo ""
-    echo "Or on macOS:"
-    echo "  brew install micromamba"
+die() {
+    echo "$*" >&2
     exit 1
-fi
+}
 
-if [[ ! -f "$ENV_FILE" ]]; then
-    echo "Error: $ENV_FILE not found"
-    exit 1
-fi
+command -v mise > /dev/null 2>&1 || die "Error: mise is not installed.
 
-# mise.toml is the record; environment.yaml carries synced copies of it.
+Install it with:
+  curl https://mise.run | sh
+Or on macOS:
+  brew install mise
+
+Then activate it in your shell, once:
+  echo 'eval \"\$(mise activate zsh)\"' >> ~/.zshrc"
+
+[[ -f mise.toml ]] || die "Error: mise.toml not found - run from the project root"
+
+# The synced version lines (Dockerfiles, devcontainer.json, ...) follow
+# mise.toml, so a version edited there reaches them before anything installs.
 ./make/versions.sh sync
 
-if [[ -d "$ENV_PREFIX" ]]; then
-    echo "Environment already exists at $ENV_PREFIX"
-    echo -n "Do you want to update it? (y/n): "
-    read -r response
+# mise runs nothing from a config file it has not been told to trust. This
+# project's own mise.toml is trusted here, and only that file.
+mise trust --quiet mise.toml
 
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        echo "Updating environment..."
-        micromamba env update --file "$ENV_FILE" --prefix "$ENV_PREFIX"
+echo "Installing the tools in mise.toml..."
+mise install
 
-        if (( ${#PIP_REQUIREMENTS} )); then
-            echo -n "Do you want to force reinstall pip packages? (y/n): "
-            read -r force_reinstall
-
-            if [[ "$force_reinstall" =~ ^[Yy]$ ]]; then
-                echo "Force reinstalling pip packages..."
-                micromamba run -p "$ENV_PREFIX" pip install --force-reinstall "${PIP_REQUIREMENTS[@]}"
-            fi
-        fi
-
-        echo "Environment updated successfully!"
-    else
-        echo "Skipping update."
-        exit 0
-    fi
-else
-    echo "Creating new environment at $ENV_PREFIX"
-    micromamba env create --file "$ENV_FILE" --prefix "$ENV_PREFIX"
-    echo "Environment created successfully!"
+# A python project: ./venv is mise's (the _.python.venv entry in mise.toml),
+# created the first time the environment is loaded. Fill it.
+requirements=()
+[[ -f requirements.txt ]] && requirements+=(-r requirements.txt)
+[[ -f .devcontainer/requirements_dev.txt ]] && requirements+=(-r .devcontainer/requirements_dev.txt)
+if (( ${#requirements[@]} )); then
+    echo "Installing python packages into ./venv..."
+    mise exec -- python -m pip install --quiet --upgrade pip
+    mise exec -- python -m pip install "${requirements[@]}"
 fi
 
-echo ""
-echo "To activate the environment, run:"
-echo "  micromamba activate $ENV_PREFIX"
-echo "To deactivate the environment, run:"
-echo "  micromamba deactivate"
+echo
+echo "Done. Installed:"
+mise ls --current --local 2> /dev/null | sed 's/^/  /' || true
+echo
+echo "With mise activated in your shell, these are on PATH in this directory"
+echo "(and ./venv is active, for python). Without it: mise exec -- <command>."

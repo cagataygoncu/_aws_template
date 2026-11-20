@@ -13,6 +13,8 @@
 # "COPY ./<file>" with no explanation, because the file simply is not in the
 # build context.
 !requirements.txt
+!/system_packages.txt
+!/system_packages_build.txt
 !/go.mod
 !/go.sum
 !/mix.exs
@@ -21,3 +23,10 @@
 !/package-lock.json
 !/CMakeLists.txt
 !/tsconfig.json
+# nextjs: `COPY . .` in its build stage needs the app's config and server.
+!/server.mjs
+!/next.config.mjs
+!/next-env.d.ts
+!/postcss.config.mjs
+!/tailwind.config.ts
+!/.eslintrc.json

@@ -174,7 +174,7 @@ run() {
     # template both changed a line, the project's value wins: a version the
     # project chose is a decision, not a conflict. The template's new default
     # is reported. Then both renders' synced lines are rewritten from the
-    # merged file, so a Dockerfile FROM or environment.yaml line differs
+    # merged file, so a Dockerfile FROM or devcontainer.json line differs
     # between old, new and project only where something besides the version
     # changed - and version lines never conflict.
     local mise_new="$work/new/mise.toml" mise_old="$work/old/mise.toml" mise_project="$project/mise.toml"

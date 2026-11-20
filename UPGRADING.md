@@ -192,10 +192,9 @@ Take the three values from `$TEMPLATE/$LANGUAGE/layer.env` — for python that i
 cp "$TEMPLATE/$LANGUAGE/targets/lambda/Dockerfile"   targets/lambda/Dockerfile
 cp "$TEMPLATE/$LANGUAGE/targets/service/Dockerfile"  targets/service/Dockerfile
 
-cp "$TEMPLATE/$LANGUAGE/environment.yaml"            environment.yaml
+cp "$TEMPLATE/$LANGUAGE/mise.toml"                   mise.toml   # then restore the project's versions
 cp -r "$TEMPLATE/$LANGUAGE/.vscode/"                 .vscode/
-
-sed -i '' "s/{{PROJECT_NAME}}/$(basename "$PROJECT")/" environment.yaml
+git rm -q environment.yaml 2>/dev/null || true      # gone since v2.0.0
 ```
 
 `.vscode/launch.json` carries `{{CONTAINER_PORT}}` in the layers that bind a

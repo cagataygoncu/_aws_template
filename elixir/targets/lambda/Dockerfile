@@ -25,13 +25,21 @@ ARG DEBUG
 # Builder stage - Mix release
 FROM ${BUILDER_IMAGE_URI} AS builder
 
+# The Erlang JIT crashes (exit 139) when this stage runs under QEMU, as it
+# does for a linux/amd64 build on an arm64 Mac. One code mapping avoids that;
+# it is harmless on a native build. Builder only: the runtime keeps defaults.
+ENV ERL_FLAGS="+JMsingle true"
+
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    build-essential \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+# Debian packages from system_packages_build.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN sed /^StrictHostKeyChecking/d /etc/ssh/ssh_config; \
@@ -46,9 +54,9 @@ RUN mix local.hex --force && mix local.rebar --force
 COPY mix.exs mix.lock ./
 RUN --mount=type=ssh mix deps.get --only prod && mix deps.compile
 
-COPY .formatter.exs ./
 COPY lib ./lib
-COPY config ./config 2>/dev/null || true
+# A project that adds config/ (config.exs, runtime.exs) adds: COPY config ./config
+# COPY cannot skip a missing source, so the layer, which has none, copies none.
 
 RUN mix compile && mix release
 
@@ -62,11 +70,11 @@ ENV APP_ENV=${ENV}
 ENV DEBUG_MODE=${DEBUG}
 
 # Update the release name to match the `app:` key in mix.exs.
-COPY --from=builder /app/_build/prod/rel/example ${LAMBDA_RUNTIME_DIR}/release
+COPY --from=builder /app/_build/prod/rel/{{PROJECT_NAME}} ${LAMBDA_RUNTIME_DIR}/release
 
 # `bootstrap` is the entrypoint Lambda's `provided.al2*` runtime expects.
 # Replace this with a real handler that talks to the Lambda Runtime API.
-RUN printf '#!/bin/sh\nexec ${LAMBDA_RUNTIME_DIR}/release/bin/example start\n' \
+RUN printf '#!/bin/sh\nexec ${LAMBDA_RUNTIME_DIR}/release/bin/{{PROJECT_NAME}} start\n' \
     > ${LAMBDA_RUNTIME_DIR}/bootstrap \
     && chmod +x ${LAMBDA_RUNTIME_DIR}/bootstrap
 

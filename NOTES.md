@@ -118,7 +118,7 @@ _aws_template/
 │   ├── Makefile        # `make deploy-cicd`, `make local-run`, ... → make/commands.sh
 │   ├── make/           # what the Makefile shells out to
 │   │   ├── commands.sh             # the deploy/local-run logic, one function per command
-│   │   └── setup_local_dev_env.sh  # `make local-dev-setup`: ./venv from environment.yaml
+│   │   └── setup_local_dev_env.sh  # `make local-dev-setup`: mise install (+ ./venv for python)
 │   ├── targets/        # CFN deployment scaffolding (NO Dockerfiles — those
 │   │                   #   live in each language's targets/ overlay)
 │   │   ├── common/         # buildspec.yaml, buildspec_test.yaml, cicd.yaml
@@ -136,28 +136,22 @@ _aws_template/
 │   ├── src/, lib/, tests/unit/, .vscode/
 │   ├── requirements.txt                      # runtime deps: images AND devcontainer
 │   ├── .devcontainer/                        # VS Code: Reopen in Container
-│   ├── environment.yaml                      # python + pip -r requirements
 │   └── targets/{lambda,service}/Dockerfile   # Python multi-stage (pip)
 ├── golang/             # Go language layer
 │   ├── src/, tests/unit/, go.mod, go.sum, .devcontainer/, .vscode/
-│   ├── environment.yaml                      # go, gopls, delve
 │   └── targets/{lambda,service}/Dockerfile   # multi-stage `go build`
 ├── typescript/         # Node + TypeScript layer — a service, not a web app
 │   ├── src/, lib/, tests/unit/, package.json, tsconfig.json, .devcontainer/, .vscode/
 │   ├── eslint.config.mjs                     # flat config, typescript-eslint
-│   ├── environment.yaml                      # nodejs
 │   └── targets/{lambda,service}/Dockerfile   # tsc to build/, then run node
 ├── cpp/                # C++ language layer
 │   ├── src/, CMakeLists.txt, .gdbinit, .devcontainer/, .vscode/
-│   ├── environment.yaml                      # cxx-compiler, cmake, ninja
 │   └── targets/{lambda,service}/Dockerfile   # CMake build + provided.al2 for lambda
 ├── nextjs/             # Next.js language layer (TS, Tailwind) — no lambda target
 │   ├── src/, package.json, tsconfig.json, next.config.mjs, .devcontainer/, .vscode/
-│   ├── environment.yaml                      # nodejs
 │   └── targets/service/Dockerfile            # npm ci + Next build
 ├── elixir/             # Elixir Mix project layer
 │   ├── lib/, test/, mix.exs, mix.lock, .devcontainer/, .vscode/
-│   ├── environment.yaml                      # elixir (pulls erlang/OTP)
 │   └── targets/{lambda,service}/Dockerfile   # mix release multi-stage
 │
 ├── make/
@@ -187,7 +181,7 @@ two ways:
 | How | Files | When it resolves |
 |---|---|---|
 | **Read when used** | `BaseImageURI` in `targets/*/cicd_parameters.json` holds `public.ecr.aws/lambda/python:${mise:python}` | `make local-build`/`info` resolve it in `commands.sh`; the pipeline's `buildspec.yaml` resolves it at each build, so a pushed bump needs no `deploy-cicd` |
-| **Synced** | Dockerfile `FROM`/`ARG` defaults, `devcontainer.json`, `environment.yaml` (micromamba still installs the toolchain), `.vscode/settings.json`, `go.mod` — files that cannot read another file | `make/versions.sh sync` rewrites the line under each `mise-sync:` comment. It runs in `make local-dev-setup` and when a devcontainer opens; `make lint` fails while any line is stale |
+| **Synced** | Dockerfile `FROM`/`ARG` defaults, `devcontainer.json`, `.vscode/settings.json`, `go.mod` — files that cannot read another file | `make/versions.sh sync` rewrites the line under each `mise-sync:` comment. It runs in `make local-dev-setup` and when a devcontainer opens; `make lint` fails while any line is stale |
 
 ```dockerfile
 # mise-sync: FROM public.ecr.aws/docker/library/python:${mise:python}
@@ -421,28 +415,41 @@ from `gig-cloudformation` — that is its own section:
 
 ### Set up the local toolchain
 
-Needs micromamba:
+The main way to work; the devcontainer is for code that needs system packages. Needs mise:
 
-```bash
-"${SHELL}" <(curl -L micro.mamba.pm)
-micromamba self-update
-
-# Or on macOS:
-brew install micromamba
+```zsh
+curl https://mise.run | sh            # or: brew install mise
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
 ```
 
 Then, in the project:
 
-```bash
-make local-dev-setup           # create/update ./venv from environment.yaml
-micromamba activate ./venv
+```zsh
+make local-dev-setup           # mise install; for python, also fills ./venv
 ```
 
-`environment.yaml` comes from the language layer, so `./venv` holds that
-language's toolchain — a Python interpreter, a Go toolchain with `gopls` and
-`delve`, a C++ compiler with CMake and Ninja, Node, or Elixir. It is a
-micromamba prefix inside the project, so nothing is installed system-wide and
-deleting the project deletes the environment with it.
+`mise.toml` lists the language and the tools `make lint` and the editor use:
+cfn-lint everywhere, gopls and dlv for go, cmake, ninja and clang-format for
+C++. With mise activated, they are on PATH inside the project, and a python
+project's `./venv` is active. `make` commands load them even without
+activation. Re-run `make local-dev-setup` after editing `mise.toml` or a
+requirements file.
+
+#### System packages
+
+Libraries mise cannot install, such as a C library, its headers or a
+compiler, go in two lists of Debian package names:
+
+| File | Installed into | For |
+|---|---|---|
+| `system_packages.txt` | the deployed service image (final stage) and the devcontainer | what the app needs to run |
+| `system_packages_build.txt` | the build stage of the deployed images and the devcontainer | compilers and `-dev` headers |
+
+One package per line. The Dockerfiles read the lists, so add a package there,
+not in a Dockerfile. The host cannot use these Linux libraries: build and
+test code that needs them in the devcontainer. A lambda's final image is
+Amazon Linux, which the lists do not reach; install there with `dnf` in its
+Dockerfile.
 
 ### Develop inside the devcontainer
 
@@ -786,7 +793,8 @@ It is worked through with `aws-service-template` as the example.
   by `<language>/gitignore`; bootstrap joins them. Both are stored without the
   dot, see **Adding a new language**.
 - **Anything language-specific lives under that language's folder** — `src/`,
-  `tests/unit/`, `.devcontainer/`, `.vscode/`, `environment.yaml`, dependency
+  `tests/unit/`, `.devcontainer/`, `.vscode/`, `mise.toml`, the two
+  `system_packages*.txt` lists, dependency
   files (`requirements.txt`, `go.mod`, `CMakeLists.txt`, `package.json`,
   `mix.exs`).
 - **The `_base/targets/` set is the union of all known target types** — `lambda`,
@@ -808,8 +816,11 @@ It is worked through with `aws-service-template` as the example.
    Put every other version line under a `mise-sync:` comment.
 3. In the same file, set `container_workdir` and the four entrypoint/cmd
    values — they must match that language's Dockerfile.
-4. Write `<language>/environment.yaml` describing the local toolchain, so
-   `make local-dev-setup` works in the generated project.
+4. List the language and its tools in `<language>/mise.toml` (cfn-lint at
+   least), so `make local-dev-setup` works in the generated project. Put
+   Debian packages in `system_packages.txt` (runtime) and
+   `system_packages_build.txt` (build), and install them in the Dockerfiles
+   with the same step the other layers use.
 5. Set `lint_tool`, `lint_command` and `lint_install` in `layer.env`, so
    `make lint` has something to run. Set `supported_targets` too if the
    layer cannot serve all three — anything not listed is deleted after the

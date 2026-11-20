@@ -22,7 +22,15 @@ FROM ${BASE_IMAGE_URI} AS dependencies
 
 ARG ENV
 
-RUN apt-get install -y git unzip
+# Debian packages from system_packages_build.txt and system_packages.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+COPY system_packages.txt /tmp/system_packages.txt
+RUN packages=$(cat /tmp/system_packages_build.txt /tmp/system_packages.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN sed /^StrictHostKeyChecking/d /etc/ssh/ssh_config; \

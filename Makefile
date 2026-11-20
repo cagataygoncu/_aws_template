@@ -77,7 +77,7 @@ check:
 	@for script in make/*.sh _base/make/commands.sh _base/make/versions.sh; do \
 	    bash -n "$$script" && echo "ok  $$script"; \
 	done
-	@zsh -n _base/make/setup_local_dev_env.sh && echo "ok  _base/make/setup_local_dev_env.sh"
+	@bash -n _base/make/setup_local_dev_env.sh && echo "ok  _base/make/setup_local_dev_env.sh"
 	@$(MAKE) --dry-run --directory=_base help > /dev/null && echo "ok  _base/Makefile"
 	@$(MAKE) --no-print-directory check-manifest
 

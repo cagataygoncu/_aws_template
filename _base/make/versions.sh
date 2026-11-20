@@ -11,7 +11,7 @@
 #                    pushed version bump reaches the next build.
 #   synced           files that cannot read another file - Dockerfile FROM and
 #                    ARG defaults, devcontainer.json, .vscode/settings.json,
-#                    go.mod, environment.yaml (micromamba). Each synced line
+#                    go.mod. Each synced line
 #                    sits under a comment holding its pattern:
 #
 #                        # mise-sync: FROM public.ecr.aws/docker/library/python:${mise:python}

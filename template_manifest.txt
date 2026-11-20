@@ -41,9 +41,13 @@ seed      requirements.txt
 seed      go.mod
 seed      go.sum
 seed      package.json
+seed      package-lock.json
 seed      mix.exs
 seed      mix.lock
 seed      CMakeLists.txt
+# Debian packages for the containers: the project adds its own libraries.
+seed      system_packages.txt
+seed      system_packages_build.txt
 seed      next.config.mjs
 seed      tailwind.config.ts
 
@@ -58,7 +62,6 @@ template  targets/common/*
 template  targets/lambda/Dockerfile
 template  targets/service/Dockerfile
 template  tests/integration/*
-template  environment.yaml
 # The tool versions. Template-owned so an upgrade moves a project still on the
 # old default to the new one; a version the project chose survives the merge.
 template  mise.toml

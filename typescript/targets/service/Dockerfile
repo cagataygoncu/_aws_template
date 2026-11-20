@@ -10,6 +10,15 @@ ARG BASE_IMAGE_URI
 # Builder stage - install everything and compile the TypeScript
 FROM ${BASE_IMAGE_URI} AS builder
 
+# Debian packages from system_packages_build.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 WORKDIR /app
 
 # package.json alone first: this layer only rebuilds when the dependencies
@@ -27,6 +36,15 @@ RUN npm run build
 # Dependencies stage - production node_modules only, no devDependencies
 FROM ${BASE_IMAGE_URI} AS dependencies
 
+# Debian packages from system_packages_build.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
@@ -35,6 +53,15 @@ RUN npm install --omit=dev
 ################################################################################################
 # Final stage - the compiled JavaScript and the runtime dependencies, nothing else
 FROM ${BASE_IMAGE_URI} AS final
+
+# Debian packages from system_packages.txt - edit the list, not this step.
+COPY system_packages.txt /tmp/system_packages.txt
+RUN packages=$(cat /tmp/system_packages.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 ARG ENV
 ARG DEBUG

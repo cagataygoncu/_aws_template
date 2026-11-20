@@ -55,6 +55,15 @@ if [[ -f "$PROJECT_CONFIG" ]]; then
     done < "$PROJECT_CONFIG"
 fi
 
+# The project's tools - cfn-lint, ruff, gopls, ./venv - come from mise.toml.
+# Load that environment here, so every command finds them whether or not mise
+# is activated in the calling shell. Quiet and optional: without mise, or
+# before `make local-dev-setup` has trusted mise.toml, commands fall back to
+# whatever is on PATH, and the one that needs a missing tool says so.
+if [[ -f mise.toml ]] && command -v mise > /dev/null 2>&1; then
+    eval "$(mise env --shell bash 2> /dev/null)" || true
+fi
+
 PROJECT_NAME="${PROJECT_NAME:-}"
 TARGET="${TARGET:-}"
 [[ -n "$PROJECT_NAME" ]] \
@@ -1893,13 +1902,12 @@ set_nested_version() {
 # local development environment
 # ---------------------------------------------------------------------------
 
-# Create or update ./venv from environment.yaml - the language toolchain this
-# project builds and tests with. Kept as its own script rather than a function
-# here, because it is what a fresh clone runs before anything else and is
-# often run on its own.
+# Install mise.toml's tools with mise, and fill ./venv for python - the
+# toolchain this project builds and tests with. Kept as its own script rather
+# than a function here, because it is what a fresh clone runs before anything
+# else and is often run on its own.
 #
 #   local-dev-setup
-#   ENV_PREFIX=./venv-3.13 local-dev-setup
 #
 local_dev_setup() {
     require_file ./make/setup_local_dev_env.sh
@@ -2163,7 +2171,8 @@ help() {
 usage: ./make/commands.sh <command> [arguments]
 
 project
-  local-dev-setup                             create/update ./venv from environment.yaml
+  local-dev-setup                             install mise.toml's tools (mise install),
+                                              and ./venv's packages for python
                                               (synced from mise.toml first)
   versions                                    tool versions in mise.toml, and
                                               the base image each target builds on

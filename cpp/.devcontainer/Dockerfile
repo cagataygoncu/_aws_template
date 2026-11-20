@@ -16,6 +16,16 @@
 # mise-sync: FROM {{BASE_IMAGE_SERVICE}} AS builder
 FROM {{BASE_IMAGE_SERVICE}} AS builder
 
+# Debian packages from system_packages_build.txt and system_packages.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+COPY system_packages.txt /tmp/system_packages.txt
+RUN packages=$(cat /tmp/system_packages_build.txt /tmp/system_packages.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

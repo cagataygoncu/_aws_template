@@ -10,6 +10,15 @@ ARG BASE_IMAGE_URI
 # Dependencies stage - install node_modules
 FROM ${BASE_IMAGE_URI} AS dependencies
 
+# Debian packages from system_packages_build.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -18,6 +27,15 @@ RUN npm ci --omit=dev
 ################################################################################################
 # Build stage - build the Next.js app (needs devDependencies for tailwindcss, postcss, typescript)
 FROM ${BASE_IMAGE_URI} AS builder
+
+# Debian packages from system_packages_build.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 WORKDIR /app
 
@@ -31,6 +49,15 @@ RUN npm run build
 ################################################################################################
 # Production stage - minimal image
 FROM ${BASE_IMAGE_URI}
+
+# Debian packages from system_packages.txt - edit the list, not this step.
+COPY system_packages.txt /tmp/system_packages.txt
+RUN packages=$(cat /tmp/system_packages.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 WORKDIR /app
 

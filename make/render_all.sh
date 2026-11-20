@@ -80,7 +80,9 @@ check_versions() {
 check_scripts() {
     local script failed=""
     for script in make/*.sh; do
-        if [[ "$script" == make/setup_local_dev_env.sh ]]; then
+        # By shebang: setup_local_dev_env.sh was a zsh script before v2.0.0,
+        # and a render of an older ref still has that one.
+        if head -1 "$script" | grep -q zsh; then
             zsh -n "$script" 2> /dev/null || failed+="$script "
         else
             bash -n "$script" 2> /dev/null || failed+="$script "

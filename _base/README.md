@@ -293,22 +293,41 @@ old path — `dev.containers.dockerPath` in user settings.
 
 ## Set up the local toolchain
 
-Only needed outside the devcontainer. Needs micromamba:
+The main way to work. Needs mise:
 
 ```zsh
-"${SHELL}" <(curl -L micro.mamba.pm)
-micromamba self-update
-
-# Or on macOS:
-brew install micromamba
+curl https://mise.run | sh            # or: brew install mise
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
 ```
 
-Then:
+Then, in the project:
 
 ```zsh
-make local-dev-setup           # create/update ./venv from environment.yaml
-micromamba activate ./venv
+make local-dev-setup           # mise install; for python, also fills ./venv
 ```
+
+`mise.toml` lists the language and the tools `make lint` and the editor use:
+cfn-lint everywhere, gopls and dlv for go, cmake, ninja and clang-format for
+C++. With mise activated, they are on PATH inside the project, and a python
+project's `./venv` is active. `make` commands load them even without
+activation. Re-run `make local-dev-setup` after editing `mise.toml` or a
+requirements file.
+
+### System packages
+
+Libraries mise cannot install, such as a C library, its headers or a
+compiler, go in two lists of Debian package names:
+
+| File | Installed into | For |
+|---|---|---|
+| `system_packages.txt` | the deployed service image (final stage) and the devcontainer | what the app needs to run |
+| `system_packages_build.txt` | the build stage of the deployed images and the devcontainer | compilers and `-dev` headers |
+
+One package per line. The Dockerfiles read the lists, so add a package there,
+not in a Dockerfile. The host cannot use these Linux libraries: build and
+test code that needs them in the devcontainer. A lambda's final image is
+Amazon Linux, which the lists do not reach; install there with `dnf` in its
+Dockerfile.
 
 ## Tool versions
 
@@ -316,8 +335,7 @@ micromamba activate ./venv
 images (`BaseImageURI` in `targets/*/cicd_parameters.json`) name it as
 `${mise:<tool>}`. `make local-build` resolves that token, and so does the
 pipeline at each build. Every other copy sits under a `mise-sync:` comment:
-the devcontainer images, `environment.yaml`, `.vscode/settings.json` and
-`go.mod`.
+the devcontainer images, `.vscode/settings.json` and `go.mod`.
 
 To move a version:
 

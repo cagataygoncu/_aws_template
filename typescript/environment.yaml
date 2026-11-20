@@ -1,8 +1,0 @@
-name: {{PROJECT_NAME}}
-channels:
-    - conda-forge
-    - nodefaults
-dependencies:
-    # Matches the node base image in targets/service/Dockerfile. npm ships with it.
-    # mise-sync: - nodejs=${mise:node}
-    - nodejs=${mise:node}

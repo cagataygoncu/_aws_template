@@ -16,7 +16,7 @@ project up to date.
 1. Copy `_base/`, the shared layer: Makefile, `make/commands.sh`, CloudFormation
    targets, buildspecs, integration tests, GitHub workflow.
 2. Overlay `<language>/` on top: source, tests, Dockerfiles, devcontainer,
-   `.vscode/`, `environment.yaml`, `mise.toml`. The language layer wins on
+   `.vscode/`, `mise.toml`, `system_packages*.txt`. The language layer wins on
    conflicts.
 3. Fill the `{{PLACEHOLDERS}}` from `<language>/layer.env`, then write every
    version line from `mise.toml`.
@@ -34,7 +34,8 @@ _aws_template/
 │   ├── layer.env           # placeholder values (never shipped)
 │   ├── mise.toml           # default tool versions (shipped)
 │   ├── LAYER.md            # what the layer holds (never shipped)
-│   └── src/, tests/, targets/*/Dockerfile, .devcontainer/, .vscode/, environment.yaml
+│   ├── system_packages.txt, system_packages_build.txt   # Debian packages (shipped)
+│   └── src/, tests/, targets/*/Dockerfile, .devcontainer/, .vscode/
 ├── make/
 │   ├── bootstrap.sh        # make new
 │   ├── manifest.sh         # make classify, make check-manifest
@@ -82,7 +83,12 @@ A generated project has its own `make help`. The commands you use most:
   locally, and by `buildspec.yaml` at each pipeline build. Lines that cannot
   read a file sit under a `mise-sync:` comment, which `make sync-versions`
   rewrites. `make lint` fails on drift. mise itself is optional, and
-  micromamba installs the toolchain.
+  `make local-dev-setup` installs the toolchain with `mise install`: mise on
+  the host is the main way to work.
+- **What mise cannot install goes in `system_packages.txt`** (runtime) and
+  `system_packages_build.txt` (build), Debian names. The devcontainer and
+  the deployed service images install them; the Dockerfiles never list
+  packages themselves.
 - **Placeholders** are `{{UPPER_CASE}}`, filled once by bootstrap.
   `${mise:<tool>}` tokens stay in the project and resolve when used.
 - **Ownership** is in `template_manifest.txt`, where the first matching rule

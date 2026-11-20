@@ -1,0 +1,9 @@
+# system_packages_build.txt - Debian packages needed to BUILD the app.
+#
+# Compilers, headers (-dev packages) and build tools mise cannot install.
+# Installed by apt into the build stage of the deployed images (service, and
+# lambda where its builder is Debian) and into the devcontainer, never into
+# the image that runs. One package per line; # comments and blank lines are
+# ignored. Runtime libraries go in system_packages.txt.
+
+# (none yet)

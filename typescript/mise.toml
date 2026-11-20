@@ -6,8 +6,15 @@
 # `make sync-versions` rewrites. `make lint` fails while any of them disagree.
 #
 # To move a version: edit it here, then `make sync-versions`.
-# micromamba still installs the toolchain (environment.yaml, kept in step by
-# the same sync); mise reads this file too if you use it.
+# `make local-dev-setup` installs everything below with `mise install`. A
+# library mise cannot install (a C library, say) goes in
+# system_packages.txt or system_packages_build.txt instead: the devcontainer
+# and the deployed images install those.
 
 [tools]
 node = "22"
+
+# Command-line tools `make lint` and the editor use. `uv` lets mise install
+# Python tools (pipx:) without a project Python.
+uv = "latest"
+"pipx:cfn-lint" = "latest"

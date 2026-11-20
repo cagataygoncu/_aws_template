@@ -16,21 +16,14 @@ FROM ${BASE_IMAGE_URI} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    libssl-dev \
-    curl \
-    libcurl4-openssl-dev \
-    unzip \
-    zlib1g \
-    zlib1g-dev \
-    libprotobuf-c-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Debian packages from system_packages_build.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN sed /^StrictHostKeyChecking/d /etc/ssh/ssh_config; \
@@ -60,6 +53,15 @@ RUN --mount=type=ssh \
 ################################################################################################
 # FROM release AS final
 FROM ${BASE_IMAGE_URI} AS final
+
+# Debian packages from system_packages.txt - edit the list, not this step.
+COPY system_packages.txt /tmp/system_packages.txt
+RUN packages=$(cat /tmp/system_packages.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 ARG ENV
 ARG DEBUG

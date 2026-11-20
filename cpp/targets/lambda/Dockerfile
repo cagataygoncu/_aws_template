@@ -27,16 +27,14 @@ FROM ${BUILDER_IMAGE_URI} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    build-essential \
-    cmake \
-    ninja-build \
-    git \
-    libssl-dev \
-    libcurl4-openssl-dev \
-    zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Debian packages from system_packages_build.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN sed /^StrictHostKeyChecking/d /etc/ssh/ssh_config; \

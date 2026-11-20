@@ -266,7 +266,7 @@ done < <(find "$destination_dir" -type f \
 # ---- tool versions ----------------------------------------------------------
 # The project's mise.toml came with the layer. A version asked for on the
 # command line goes into it, then every synced line (Dockerfile FROM,
-# devcontainer.json, environment.yaml, ...) is written from it - the same
+# devcontainer.json, go.mod, ...) is written from it - the same
 # `make sync-versions` the project runs after its own version bumps.
 
 versions() {
@@ -335,7 +335,7 @@ echo "    lambda image   $(versions expand "$base_image_lambda")"
 echo
 echo "Next steps:"
 echo "    cd $destination_dir"
-echo "    make local-dev-setup && micromamba activate ./venv"
+echo "    make local-dev-setup        # mise install; needs mise"
 echo "    ${next_steps}"
 echo "    Open in VS Code -> Reopen in Container"
 echo

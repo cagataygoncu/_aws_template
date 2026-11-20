@@ -1,7 +1,7 @@
 # Shared by every project: _aws_template's _base/gitignore. The language's own
 # entries follow below. Edit freely - a template upgrade merges its changes in.
 
-# The local toolchain `make local-dev-setup` creates with micromamba.
+# The python venv `make local-dev-setup` fills (mise creates it).
 /venv/
 /venv-*/
 

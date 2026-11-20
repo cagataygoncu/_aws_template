@@ -1,0 +1,12 @@
+# system_packages.txt - Debian packages the app needs at RUN time.
+#
+# For libraries mise cannot install. Installed by apt into the deployed
+# service image (its final stage) and into the devcontainer. One package per
+# line; # comments and blank lines are ignored. The names are Debian's: the
+# service and dev images are Debian. A lambda's final image is Amazon Linux,
+# which this list does not reach - install there with dnf in its Dockerfile.
+# Build-only packages (compilers, -dev headers) go in system_packages_build.txt.
+
+ca-certificates
+libssl3
+libcurl4

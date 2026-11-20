@@ -2,6 +2,16 @@
 # mise-sync: FROM public.ecr.aws/docker/library/elixir:${mise:elixir}-otp-${mise:erlang}
 FROM public.ecr.aws/docker/library/elixir:${mise:elixir}-otp-${mise:erlang}
 
+# Debian packages from system_packages_build.txt and system_packages.txt - edit the list, not this step.
+COPY system_packages_build.txt /tmp/system_packages_build.txt
+COPY system_packages.txt /tmp/system_packages.txt
+RUN packages=$(cat /tmp/system_packages_build.txt /tmp/system_packages.txt | sed -e 's/#.*//' | xargs); \
+    if [ -n "$packages" ]; then \
+        apt-get update \
+        && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 COPY ./.devcontainer/.bashrc /root/.bashrc
 
 ENV DEBIAN_FRONTEND=noninteractive
