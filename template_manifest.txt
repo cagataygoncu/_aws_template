@@ -12,6 +12,10 @@
 #   template  the template owns it. An upgrade merges the template's change
 #             into it (3-way: old render, new render, project). Project edits
 #             survive; an edit that clashes shows as a merge conflict.
+#   retired   a file the template used to ship and no longer does. An upgrade
+#             deletes the project's copy if the project never changed it.
+#             These rules match nothing in a render; `make check` fails if
+#             one ever does.
 #   seed      a starting point the project owns from then on. An upgrade
 #             creates it if missing; otherwise it only reports the template's
 #             change, for a person to port while keeping the project's values.
@@ -57,11 +61,9 @@ template  make/*
 template  README.md
 template  .dockerignore
 template  .gitignore
-template  .github/*
 template  targets/common/*
 template  targets/lambda/Dockerfile
 template  targets/service/Dockerfile
-template  tests/integration/*
 # The tool versions. Template-owned so an upgrade moves a project still on the
 # old default to the new one; a version the project chose survives the merge.
 template  mise.toml
@@ -78,3 +80,8 @@ template  postcss.config.mjs
 template  .formatter.exs
 template  .iex.exs
 template  .gdbinit
+
+# Retired: files the template used to ship. Kept so an upgrade removes them.
+retired   environment.yaml
+retired   tests/integration/*
+retired   .github/*

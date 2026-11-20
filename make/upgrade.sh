@@ -21,6 +21,8 @@
 #             project lacks it, otherwise left alone. The template's change
 #             goes into seed.patch, for a person to port.
 #   stamp     .template.env, rewritten at the end to name the new version.
+#   retired   a file the template no longer ships: deleted if the project
+#             never changed it, otherwise kept and reported.
 #
 # A file the project deleted stays deleted. A path no rule covers is treated
 # as seed, the safe side. Afterwards make/versions.sh sync rewrites the synced
@@ -224,6 +226,9 @@ run() {
 
         case "$class" in
             stamp) continue ;;
+            # Dropped by the template: deleted if the project never changed
+            # it, the same as a template file the new version lacks.
+            retired) class=template ;;
             unclassified)
                 class=seed
                 note seed "$path" "no manifest rule - treated as seed"
@@ -301,6 +306,12 @@ run() {
         elif [[ -n "$ho" && -n "$hp" ]]; then
             if same "$p" "$o"; then
                 rm -f "$p"
+                # And the folders it leaves empty, up to the project root.
+                local dir
+                dir=$(dirname "$p")
+                while [[ "$dir" != "$project" ]] && rmdir "$dir" 2> /dev/null; do
+                    dir=$(dirname "$dir")
+                done
                 removed=$((removed + 1))
                 note template "$path" "removed - the template dropped it"
             else

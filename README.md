@@ -14,7 +14,7 @@ project up to date.
 `make new <language> <project_name>` builds a project in four steps:
 
 1. Copy `_base/`, the shared layer: Makefile, `make/commands.sh`, CloudFormation
-   targets, buildspecs, integration tests, GitHub workflow.
+   targets, buildspecs, `project.env`, `gitignore`.
 2. Overlay `<language>/` on top: source, tests, Dockerfiles, devcontainer,
    `.vscode/`, `mise.toml`, `system_packages*.txt`. The language layer wins on
    conflicts.
@@ -29,7 +29,7 @@ _aws_template/
 ├── _base/                  # shared by every language
 │   ├── Makefile, make/     # project commands: commands.sh, versions.sh, setup_local_dev_env.sh
 │   ├── targets/            # common/ (cicd, buildspecs), lambda/, service/{task,server}/
-│   └── tests/integration/, .github/workflows/, project.env, container_config.env
+│   └── project.env, container_config.env, gitignore, .dockerignore
 ├── python/ golang/ typescript/ cpp/ nextjs/ elixir/   # language layers, each with:
 │   ├── layer.env           # placeholder values (never shipped)
 │   ├── mise.toml           # default tool versions (shipped)
@@ -93,8 +93,9 @@ A generated project has its own `make help`. The commands you use most:
   `${mise:<tool>}` tokens stay in the project and resolve when used.
 - **Ownership** is in `template_manifest.txt`, where the first matching rule
   wins. `template` files take upgrades by 3-way merge. `seed` files belong to
-  the project once made. `stamp` is `.template.env`. `make check` fails on any
-  generated file no rule covers.
+  the project once made. `stamp` is `.template.env`. `retired` names files
+  the template dropped, so an upgrade deletes untouched copies. `make check`
+  fails on any generated file no rule covers, or a retired one.
 - **Ignore files are stored as `gitignore`** (no dot): `_base/gitignore` is
   shared, `<language>/gitignore` adds to it, and bootstrap joins them into
   the project's `.gitignore`. Stored without the dot, they cannot hide

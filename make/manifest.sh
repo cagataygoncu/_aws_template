@@ -27,7 +27,7 @@ load_rules() {
     while read -r class pattern rest; do
         [[ -z "$class" || "$class" == \#* ]] && continue
         case "$class" in
-            stamp|template|seed) ;;
+            stamp|template|seed|retired) ;;
             *) echo "Error: $manifest_file: unknown class '$class'" >&2; exit 2 ;;
         esac
         if [[ -z "$pattern" || -n "$rest" ]]; then
@@ -86,6 +86,10 @@ check() {
             if [[ -z "$index" ]]; then
                 echo "unclassified  $language: $path"
                 unclassified=$((unclassified + 1))
+            elif [[ "${rule_classes[$index]}" == retired ]]; then
+                # A retired file is one the template no longer ships.
+                echo "retired but shipped  $language: $path"
+                unclassified=$((unclassified + 1))
             else
                 rule_used[$index]=true
             fi
@@ -93,13 +97,14 @@ check() {
     done
 
     for i in "${!rule_patterns[@]}"; do
-        if [[ "${rule_used[$i]}" != true ]]; then
+        # Retired rules match nothing by design: they name dropped files.
+        if [[ "${rule_used[$i]}" != true && "${rule_classes[$i]}" != retired ]]; then
             echo "warning: rule matches no file in any language: ${rule_classes[$i]} ${rule_patterns[$i]}"
         fi
     done
 
     if (( unclassified > 0 )); then
-        echo "Error: $unclassified file(s) match no rule in template_manifest.txt" >&2
+        echo "Error: $unclassified file(s) match no rule, or a retired one, in template_manifest.txt" >&2
         exit 1
     fi
     echo "ok  template_manifest.txt classifies every file of every language"

@@ -124,9 +124,6 @@ _aws_template/
 │   │   ├── common/         # buildspec.yaml, buildspec_test.yaml, cicd.yaml
 │   │   ├── lambda/         # deployment.yaml, cicd_parameters.json
 │   │   └── service/        # task/ (no ALB), server/ (ALB + domain)
-│   ├── tests/
-│   │   └── integration/    # integration test runner & example requests
-│   ├── .github/workflows/  # task-integration.yml
 │   ├── .dockerignore
 │   └── container_config.env                # the env file to upload to S3
 │
@@ -756,6 +753,9 @@ The ref defaults to the latest tag:
    - `seed`: added if new, otherwise left alone, with the template's change
      appended to `seed.patch`.
    - A file the project deleted stays deleted.
+   - `retired`: a file the template dropped. Deleted with any folders it
+     leaves empty if the project never changed it, otherwise kept and
+     reported.
    - A path no rule covers is treated as `seed`.
 4. It runs `versions.sh sync` and rewrites `.template.env` for the new
    commit.
@@ -787,8 +787,9 @@ It is worked through with `aws-service-template` as the example.
 ## Maintenance philosophy
 
 - **Anything truly shared lives in `_base/`** — change once, every new project picks
-  it up. The CFN target scaffolding, `Makefile`, `commands.sh`, GitHub workflow,
-  integration test runner, `.dockerignore`, etc. all sit here. A project's
+  it up. The CFN target scaffolding, `Makefile`, `commands.sh`,
+  `.dockerignore`, etc. all sit here. (The integration test runner and its
+  GitHub workflow were dropped in 2026-11: stale, and broken.) A project's
   `.gitignore` is `_base/gitignore` (venv, OS files, local secrets) followed
   by `<language>/gitignore`; bootstrap joins them. Both are stored without the
   dot, see **Adding a new language**.
