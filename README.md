@@ -89,6 +89,10 @@ A generated project has its own `make help`. The commands you use most:
   wins. `template` files take upgrades by 3-way merge. `seed` files belong to
   the project once made. `stamp` is `.template.env`. `make check` fails on any
   generated file no rule covers.
+- **Layer ignore files are stored as `gitignore`** (no dot) and renamed at
+  bootstrap, so they cannot hide template files, such as nextjs's
+  `.env.local`, from this repo's git. The root `.gitignore` alone decides
+  what the template tracks.
 - **Commit before `make new`.** A render from uncommitted changes is stamped
   `TEMPLATE_DIRTY=true` and cannot be repeated for an upgrade.
 - **The `gig-cfn-templates` release** is set in each target's

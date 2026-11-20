@@ -127,7 +127,6 @@ _aws_template/
 │   ├── tests/
 │   │   └── integration/    # integration test runner & example requests
 │   ├── .github/workflows/  # task-integration.yml
-│   ├── .gitignore
 │   ├── .dockerignore
 │   └── container_config.env                # the env file to upload to S3
 │
@@ -782,7 +781,9 @@ It is worked through with `aws-service-template` as the example.
 
 - **Anything truly shared lives in `_base/`** — change once, every new project picks
   it up. The CFN target scaffolding, `Makefile`, `commands.sh`, GitHub workflow,
-  integration test runner, `.gitignore`, etc. all sit here.
+  integration test runner, `.dockerignore`, etc. all sit here. There is no
+  shared `.gitignore`: the elixir, nextjs and typescript layers each ship one
+  (stored as `gitignore`, see below); python, golang and cpp projects get none.
 - **Anything language-specific lives under that language's folder** — `src/`,
   `tests/unit/`, `.devcontainer/`, `.vscode/`, `environment.yaml`, dependency
   files (`requirements.txt`, `go.mod`, `CMakeLists.txt`, `package.json`,
@@ -818,7 +819,12 @@ It is worked through with `aws-service-template` as the example.
 7. Add any manifest the Dockerfiles `COPY` to `_base/.dockerignore`, which
    ignores everything by default — a missing entry fails the build at the
    `COPY` line with nothing but "not found".
-8. Write a short `<language>/LAYER.md` describing what's inside. It is excluded
+8. Store the project's ignore file as `<language>/gitignore`, without the
+   dot; bootstrap renames it to `.gitignore`. A real `.gitignore` in a layer
+   also acts on this repo, and would stop git tracking files new projects
+   need (nextjs's ignored `.env.local` until 2026-11). Keep the root
+   `.gitignore` free of such files too.
+9. Write a short `<language>/LAYER.md` describing what's inside. It is excluded
    from the rsync, so it documents the layer without shipping to projects.
 
 ## Notes on the originals

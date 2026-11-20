@@ -51,3 +51,15 @@ __pycache__
 
 .DS_Store
 
+# What working inside a language layer leaves behind. The layers' own
+# .gitignore files are stored as `gitignore` (no dot) so they do not act on
+# this repo - see make/bootstrap.sh - which makes this file the only one that
+# decides what the template tracks. Never ignore a file a new project needs
+# here: nextjs/.env.local and nextjs/next-env.d.ts are template files.
+node_modules/
+.next/
+_build/
+deps/
+.elixir_ls/
+erl_crash.dump
+

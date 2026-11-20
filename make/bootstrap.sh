@@ -154,6 +154,14 @@ rsync -a "${rsync_excludes[@]}" "$base_dir/" "$destination_dir/"
 echo ">>> Overlaying $language/ -> destination"
 rsync -a "${rsync_excludes[@]}" "$language_dir/" "$destination_dir/"
 
+# A layer keeps its project .gitignore as `gitignore`, without the dot. As a
+# real .gitignore it would also act on this template repo: nextjs's ignores
+# .env.local, so git never tracked the .env.local every nextjs project needs.
+# The project gets it under its proper name.
+if [[ -f "$destination_dir/gitignore" ]]; then
+    mv "$destination_dir/gitignore" "$destination_dir/.gitignore"
+fi
+
 # ---- targets this language cannot serve ---------------------------------
 # _base ships all three, so anything the layer does not support is removed
 # here rather than left to fail at deploy time.
