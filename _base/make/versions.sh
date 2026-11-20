@@ -20,7 +20,8 @@
 #                    `sync` rewrites the line under every such comment.
 #
 # A ${mise:<name>} token resolves to <name> in mise.toml's [tools] section, or
-# its [vars] section for values mise does not install (the Debian release the
+# its [vars] section. <name> is the key as written, quotes dropped:
+# ${mise:python}, ${mise:pipx:cfn-lint}. Values come from for values mise does not install (the Debian release the
 # cpp images are built on).
 #
 # Usage:
@@ -59,6 +60,25 @@ require_mise_file() {
 # [tools] and [vars]. Shared by every command so they cannot disagree.
 # shellcheck disable=SC2016 - awk code, not shell.
 AWK_READ_MISE='
+# A key is bare (python) or quoted ("pipx:cfn-lint"). key_of returns it, or
+# "" for a line that is not `key = "value"`; value_at is where the value
+# starts (its opening quote), for set_value to rewrite it.
+function key_of(line, rest, key) {
+    rest = line
+    sub(/^[ \t]*/, "", rest)
+    if (rest ~ /^"[^"]+"[ \t]*=[ \t]*"/) {
+        key = substr(rest, 2)
+        sub(/".*$/, "", key)
+    } else if (rest ~ /^[A-Za-z0-9_-]+[ \t]*=[ \t]*"/) {
+        key = rest
+        sub(/[ \t]*=.*$/, "", key)
+    } else {
+        return ""
+    }
+    value_at = index(line, "=")
+    value_at += index(substr(line, value_at + 1), "\"")
+    return key
+}
 function read_mise(line, name, value) {
     if (line ~ /^[ \t]*\[/) {
         section = line
@@ -66,12 +86,9 @@ function read_mise(line, name, value) {
         return
     }
     if (section != "tools" && section != "vars") return
-    if (line !~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=[ \t]*"[^"]*"/) return
-    name = line
-    sub(/^[ \t]*/, "", name)
-    sub(/[ \t]*=.*$/, "", name)
-    value = line
-    sub(/^[^"]*"/, "", value)
+    name = key_of(line)
+    if (name == "") return
+    value = substr(line, value_at + 1)
     sub(/".*$/, "", value)
     v[name] = value
 }
@@ -136,21 +153,17 @@ set_value() {
     require_mise_file
     local tmp
     tmp=$(mktemp)
-    if ! NAME="$name" VALUE="$value" awk '
+    if ! NAME="$name" VALUE="$value" awk "$AWK_READ_MISE"'
         /^[ \t]*\[/ {
             section = $0
             gsub(/^[ \t]*\[[ \t]*|[ \t]*\].*$/, "", section)
         }
-        (section == "tools" || section == "vars") && !done {
-            key = $0
-            sub(/^[ \t]*/, "", key)
-            sub(/[ \t]*=.*$/, "", key)
-            if (key == ENVIRON["NAME"] && $0 ~ /=[ \t]*"[^"]*"/) {
-                head = $0; sub(/".*$/, "", head)
-                tail = $0; sub(/^[^"]*"[^"]*"/, "", tail)
-                $0 = head "\"" ENVIRON["VALUE"] "\"" tail
-                done = 1
-            }
+        (section == "tools" || section == "vars") && !done && key_of($0) == ENVIRON["NAME"] {
+            # Keep everything around the value: the key, a trailing comment.
+            tail = substr($0, value_at + 1)
+            sub(/^[^"]*"/, "", tail)
+            $0 = substr($0, 1, value_at) ENVIRON["VALUE"] "\"" tail
+            done = 1
         }
         { print }
         END { if (!done) exit 3 }

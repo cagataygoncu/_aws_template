@@ -1,12 +1,15 @@
 ipykernel
 pytest
 hypothesis
-cfn-lint
+# Pinned from mise.toml - change it there, then `make sync-versions`.
+# mise-sync: cfn-lint==${mise:pipx:cfn-lint}
+cfn-lint==${mise:pipx:cfn-lint}
 
 line-profiler
 memory-profiler
 
 # ruff replaces black (format) and pylint (lint); config in ruff.toml
-ruff
+# mise-sync: ruff==${mise:ruff}
+ruff==${mise:ruff}
 
 cfnresponse

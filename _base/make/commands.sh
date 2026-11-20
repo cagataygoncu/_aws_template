@@ -62,6 +62,14 @@ fi
 # whatever is on PATH, and the one that needs a missing tool says so.
 if [[ -f mise.toml ]] && command -v mise > /dev/null 2>&1; then
     eval "$(mise env --shell bash 2> /dev/null)" || true
+    # mise keeps PATH entries added after `mise activate` ahead of its own, so
+    # an older cfn-lint from another environment (a micromamba base, say)
+    # would shadow the pinned one. Put this project's tools first: ./venv,
+    # then the folders of the tools mise.toml pins.
+    mise_paths=$(mise bin-paths 2> /dev/null | paste -sd: - || true)
+    [[ -n "$mise_paths" ]] && PATH="$mise_paths:$PATH"
+    [[ -n "${VIRTUAL_ENV:-}" ]] && PATH="$VIRTUAL_ENV/bin:$PATH"
+    export PATH
 fi
 
 PROJECT_NAME="${PROJECT_NAME:-}"

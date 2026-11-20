@@ -14,7 +14,9 @@
 [tools]
 node = "20"
 
-# Command-line tools `make lint` and the editor use. `uv` lets mise install
-# Python tools (pipx:) without a project Python.
-uv = "latest"
-"pipx:cfn-lint" = "latest"
+# Command-line tools `make lint` and the editor use, pinned so every machine
+# lints with the same versions. `uv` lets mise install Python tools (pipx:)
+# without a project Python. To move them: `mise outdated`, then edit the
+# versions here (or `mise upgrade --bump`) and commit.
+uv = "0.13.9"
+"pipx:cfn-lint" = "1.60.1"

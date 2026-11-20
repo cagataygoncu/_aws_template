@@ -15,9 +15,11 @@
 # 1.26 is the floor: aws-lambda-go v1.55 and gopls both require it.
 go = "1.26"
 
-# Command-line tools `make lint` and the editor use. `uv` lets mise install
-# Python tools (pipx:) without a project Python.
-uv = "latest"
-"pipx:cfn-lint" = "latest"
-"go:golang.org/x/tools/gopls" = "latest"
-"go:github.com/go-delve/delve/cmd/dlv" = "latest"
+# Command-line tools `make lint` and the editor use, pinned so every machine
+# lints with the same versions. `uv` lets mise install Python tools (pipx:)
+# without a project Python. To move them: `mise outdated`, then edit the
+# versions here (or `mise upgrade --bump`) and commit.
+uv = "0.13.9"
+"pipx:cfn-lint" = "1.60.1"
+"go:golang.org/x/tools/gopls" = "0.24.0"
+"go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"

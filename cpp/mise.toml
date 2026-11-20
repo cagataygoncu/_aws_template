@@ -12,15 +12,17 @@
 # and the deployed images install those.
 
 [tools]
-# Command-line tools `make lint` and the editor use. `uv` lets mise install
-# Python tools (pipx:) without a project Python.
-uv = "latest"
-"pipx:cfn-lint" = "latest"
+# Command-line tools `make lint` and the editor use, pinned so every machine
+# lints with the same versions. `uv` lets mise install Python tools (pipx:)
+# without a project Python. To move them: `mise outdated`, then edit the
+# versions here (or `mise upgrade --bump`) and commit.
+uv = "0.13.9"
+"pipx:cfn-lint" = "1.60.1"
 # The compiler is the system one: Xcode command-line tools on a Mac,
 # build-essential in system_packages_build.txt in the containers.
-cmake = "latest"
-ninja = "latest"
-"pipx:clang-format" = "latest"
+cmake = "4.5.0"
+ninja = "1.13.2"
+"pipx:clang-format" = "23.1.5"
 
 [vars]
 # Not a tool mise installs: the Debian release the images are built on,
