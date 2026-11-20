@@ -379,6 +379,17 @@ Every language. Run `make upgrade <project> v2.1.0`; nothing needs doing by hand
 |---|---|
 | **The integration test runner and its GitHub workflow are gone**: `tests/integration/` and `.github/workflows/task-integration.yml`. Both were broken: the workflow built `targets/task/Dockerfile`, which no longer exists | nothing: `make upgrade` deletes untouched copies, and the folders they leave empty. A copy the project edited is kept and named in the report; delete it or keep it as the project's own |
 | **`retired`** is a new class in `template_manifest.txt`: files the template dropped. `environment.yaml` is retired too | nothing: an upgrade to v2.1.0 or later removes an untouched `environment.yaml` |
+
+### Since v2.1.1
+
+Every language. Run `make upgrade <project> v2.1.1`, then `make local-dev-setup`.
+
+| Change | Action in the project |
+|---|---|
+| **Every tool in `mise.toml` is pinned** (template): cfn-lint 1.60.1, uv 0.13.9; gopls 0.24.0 and dlv 1.27.2 for go; cmake 4.5.0, ninja 1.13.2 and clang-format 23.1.5 for cpp; ruff 0.17.5 for python. They were `"latest"`, so machines linted with different versions | run `make local-dev-setup` to install the pins. A tool line the project changed keeps the project's value; the report names the template's |
+| python: `.devcontainer/requirements_dev.txt` (template) pins `cfn-lint` and `ruff` from `mise.toml` through `mise-sync` lines | nothing: `make local-dev-setup` reinstalls them into `./venv` |
+| `make/versions.sh` reads quoted keys: `${mise:pipx:cfn-lint}` | nothing |
+| `make/commands.sh` puts `./venv` and the pinned tools first on PATH, so a tool from another environment (an old micromamba base, say) cannot shadow a pin | nothing. Outside `make`, the shell still decides: put `eval "$(mise activate zsh)"` after any other environment's activation in `~/.zshrc`, or remove micromamba's |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
