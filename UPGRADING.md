@@ -334,6 +334,16 @@ on its own. Nothing in this release needs porting by hand.
 | `tests/integration/task_integration_validation.py` (template) no longer imports `src.utilities`. That module is in no language layer, so the import always failed. The file now reads `example_requests.json` with `json.load` and passes the python layer's ruff | nothing: `make upgrade` merges it. If the project edited the same lines, resolve the conflict |
 | The same file's `X-API-Key` header is now a placeholder, `ExampleApiKey1234567890`. The literal key it used to carry is removed | if the project's copy still carries the old literal key, remove it and read the key from the environment. Treat the old key as exposed |
 | `make render-all` at the template root renders and checks every language; `make render-all REF=<tag>` renders a past release | nothing: template maintainers only |
+
+### Since v1.1.1
+
+nextjs only. The other languages receive nothing.
+
+| Change | Action in the project |
+|---|---|
+| `.env.local` (seed) ships with the template. It was git-ignored in the template, so releases and upgrades never carried it, and only `make new` from a working tree did | nothing if the project has one: `make upgrade` leaves it alone. A project without one gets the template's copy; fill in its values |
+| `next-env.d.ts` (template) ships with the template, for the same reason | nothing: `make upgrade` adds it |
+| Layer ignore files are stored as `gitignore` in the template and renamed at bootstrap; a project's `.gitignore` is unchanged | nothing |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
