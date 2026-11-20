@@ -1,0 +1,14 @@
+# Bytecode and tool caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Packaging output.
+*.egg-info/
+/build/
+/dist/

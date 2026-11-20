@@ -152,14 +152,24 @@ echo ">>> Copying _base/ -> destination"
 rsync -a "${rsync_excludes[@]}" "$base_dir/" "$destination_dir/"
 
 echo ">>> Overlaying $language/ -> destination"
-rsync -a "${rsync_excludes[@]}" "$language_dir/" "$destination_dir/"
+# The layer's gitignore is joined to _base's below, not copied over it.
+rsync -a "${rsync_excludes[@]}" --exclude='/gitignore' "$language_dir/" "$destination_dir/"
 
-# A layer keeps its project .gitignore as `gitignore`, without the dot. As a
-# real .gitignore it would also act on this template repo: nextjs's ignores
+# The project's .gitignore is _base/gitignore (shared: venv, OS files, local
+# secrets) followed by <language>/gitignore. Both are stored without the dot:
+# a real .gitignore would also act on this template repo - nextjs's ignores
 # .env.local, so git never tracked the .env.local every nextjs project needs.
-# The project gets it under its proper name.
 if [[ -f "$destination_dir/gitignore" ]]; then
-    mv "$destination_dir/gitignore" "$destination_dir/.gitignore"
+    {
+        cat "$destination_dir/gitignore"
+        if [[ -f "$language_dir/gitignore" ]]; then
+            echo
+            echo "# ---- $language ($language/gitignore in _aws_template) ----"
+            echo
+            cat "$language_dir/gitignore"
+        fi
+    } > "$destination_dir/.gitignore"
+    rm -f "$destination_dir/gitignore"
 fi
 
 # ---- targets this language cannot serve ---------------------------------

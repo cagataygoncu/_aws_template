@@ -781,9 +781,10 @@ It is worked through with `aws-service-template` as the example.
 
 - **Anything truly shared lives in `_base/`** — change once, every new project picks
   it up. The CFN target scaffolding, `Makefile`, `commands.sh`, GitHub workflow,
-  integration test runner, `.dockerignore`, etc. all sit here. There is no
-  shared `.gitignore`: the elixir, nextjs and typescript layers each ship one
-  (stored as `gitignore`, see below); python, golang and cpp projects get none.
+  integration test runner, `.dockerignore`, etc. all sit here. A project's
+  `.gitignore` is `_base/gitignore` (venv, OS files, local secrets) followed
+  by `<language>/gitignore`; bootstrap joins them. Both are stored without the
+  dot, see **Adding a new language**.
 - **Anything language-specific lives under that language's folder** — `src/`,
   `tests/unit/`, `.devcontainer/`, `.vscode/`, `environment.yaml`, dependency
   files (`requirements.txt`, `go.mod`, `CMakeLists.txt`, `package.json`,
@@ -819,8 +820,10 @@ It is worked through with `aws-service-template` as the example.
 7. Add any manifest the Dockerfiles `COPY` to `_base/.dockerignore`, which
    ignores everything by default — a missing entry fails the build at the
    `COPY` line with nothing but "not found".
-8. Store the project's ignore file as `<language>/gitignore`, without the
-   dot; bootstrap renames it to `.gitignore`. A real `.gitignore` in a layer
+8. Write the language's ignore entries in `<language>/gitignore`, without
+   the dot. Bootstrap appends them to `_base/gitignore` as the project's
+   `.gitignore`. Never ignore a file the layer ships: render the language,
+   `git init && git add -A`, and `git status --ignored` must list nothing. A real `.gitignore` in a layer
    also acts on this repo, and would stop git tracking files new projects
    need (nextjs's ignored `.env.local` until 2026-11). Keep the root
    `.gitignore` free of such files too.

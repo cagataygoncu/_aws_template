@@ -1,0 +1,7 @@
+# Binaries from a local `go build -o build/...`, and the ones delve leaves.
+/build/
+__debug_bin*
+
+# Test binaries and coverage.
+*.test
+coverage.out

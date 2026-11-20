@@ -1,0 +1,12 @@
+# CMake build trees: `cmake -S . -B build`, and IDE-made ones.
+/build/
+/cmake-build-*/
+
+# clangd's index and the compile database it reads.
+.cache/
+/compile_commands.json
+
+# Objects and libraries built outside build/.
+*.o
+*.a
+*.so

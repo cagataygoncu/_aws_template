@@ -1,0 +1,18 @@
+# Shared by every project: _aws_template's _base/gitignore. The language's own
+# entries follow below. Edit freely - a template upgrade merges its changes in.
+
+# The local toolchain `make local-dev-setup` creates with micromamba.
+/venv/
+/venv-*/
+
+# OS and editor files.
+.DS_Store
+*.swp
+.idea/
+
+# Local secrets. container_config.env is not here: it is the project's
+# environment file, kept in git and uploaded by `make sync-config`.
+.env
+*.pem
+
+*.log
