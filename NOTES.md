@@ -839,7 +839,11 @@ It is worked through with `aws-service-template` as the example.
    also acts on this repo, and would stop git tracking files new projects
    need (nextjs's ignored `.env.local` until 2026-11). Keep the root
    `.gitignore` free of such files too.
-9. Write a short `<language>/LAYER.md` describing what's inside. It is excluded
+9. Write `<language>/docs/language.md`: the tools, run, test and debug
+   commands, and the debug configurations. `_base/docs/development.md`
+   links it. Edit a diagram in its `.mmd` file, then re-render the `.svg`
+   with the ELK layout.
+10. Write a short `<language>/LAYER.md` describing what's inside. It is excluded
    from the rsync, so it documents the layer without shipping to projects.
 
 ## Notes on the originals

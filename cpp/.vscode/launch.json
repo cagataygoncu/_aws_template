@@ -1,13 +1,15 @@
 {
-    // Build first: cmake -S . -B build && cmake --build build
-    // The target name comes from add_executable() in CMakeLists.txt.
+    // "CMake: build" (.vscode/tasks.json) runs first. The binary name comes
+    // from add_executable() in CMakeLists.txt: rename it there, rename it here.
+    // gdb is the devcontainer's; on a Mac host, debug in the devcontainer.
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run cpp_sample",
+            "name": "Run main",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/cpp_sample",
+            "program": "${workspaceFolder}/build/main",
+            "preLaunchTask": "CMake: build",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

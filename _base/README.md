@@ -5,6 +5,11 @@ A {{LANGUAGE}} service deployed to AWS as a Lambda function or a Fargate task.
 Everything is driven by `make`, which passes through to `./make/commands.sh` —
 one function per command. Run `make help` for the full list.
 
+**Developing:** [docs/development.md](docs/development.md) covers setup,
+running, debugging, testing and the devcontainer, with diagrams.
+[docs/language.md](docs/language.md) has the {{LANGUAGE}} commands and debug
+configurations.
+
 ---
 
 > [!WARNING]
