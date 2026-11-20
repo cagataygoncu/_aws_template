@@ -1,18 +1,18 @@
 version: 0.2
 
-cache:
-  paths:
-    - '/root/.cache/pip/**/*'
+# The pipeline's test stage (RunTests in cicd_parameters.json). It runs
+# `make test` - the same command a developer runs: the unit tests inside the
+# service base image, at the versions in mise.toml, whatever the language.
+# This CodeBuild project runs in privileged mode, so Docker is available.
+# A project without unit tests yet (an empty TEST_COMMAND) passes with a note.
 
 phases:
-  install:
-    runtime-versions:
-      python: 3.12
+  build:
+    # One block, one shell: the ssh agent started here is still running when
+    # make test needs it for private git dependencies.
     commands: |
       echo "TEST_REPORT_DIRECTORY = ${TEST_REPORT_DIRECTORY}"
       echo "TEST_REPORT_FILENAME = ${TEST_REPORT_FILENAME}"
-
-      echo "Running test phase"
 
       echo "Retrieving SSH key from Secrets Manager"
       SSH_KEY=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:ap-southeast-2:095841671171:secret:gig_service_template_github --query SecretString --output text)
@@ -24,12 +24,9 @@ phases:
       ssh-add -L
       ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
 
-      echo "Pip install requirements"
-      pip install -r tests/requirements.txt
-      pip install -r requirements.txt
-  build:
-    commands: |
-      python -m pytest . --junitxml=${TEST_REPORT_DIRECTORY}/${TEST_REPORT_FILENAME}
+      echo "Running the unit tests: make test"
+      ./make/commands.sh test
+
 reports:
   coverage:
     files:

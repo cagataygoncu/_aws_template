@@ -58,6 +58,19 @@ configurations.
 
 ## Quick start
 
+Set up once. Needs [mise](https://mise.jdx.dev) (`curl https://mise.run | sh`,
+then `eval "$(mise activate zsh)"` in `~/.zshrc`):
+
+```zsh
+make local-dev-setup           # mise install: the tools in mise.toml (+ ./venv for python)
+make test                      # unit tests, in the service base image (as the pipeline runs them)
+make lint                      # versions, source, and cfn-lint over every template
+```
+
+Details, debugging and the devcontainer: [docs/development.md](docs/development.md).
+
+Then deploy and operate:
+
 ```zsh
 make info                      # what every command is about to act on
 make config                    # are the environment variables correct?
@@ -68,7 +81,6 @@ make local-run ENTRYPOINT=... CMD="..."   # run it locally, MODE=local
 make local-logs                # follow what it is doing
 make local-stop
 
-make lint                      # source, and cfn-lint over every template
 make validate                  # cicd.yaml + this target's deployment.yaml
 make deploy-cicd               # create the pipeline stack, wire the git remote
 make push <branch>             # push <branch> to CodeCommit main, start it

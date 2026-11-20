@@ -99,6 +99,7 @@ Where they appear, and what fills them:
 | `{{CONTAINER_*}}` | `targets/*/deployment.yaml` | `<language>/layer.env` |
 | `{{RUN_*}}` | `README.md` | `<language>/layer.env` — shell-ready twins of the `CONTAINER_*` values |
 | `{{LINT_TOOL}}`, `{{LINT_COMMAND}}`, `{{LINT_INSTALL}}` | `make/commands.sh` | `<language>/layer.env` |
+| `{{TEST_COMMAND}}`, `{{TEST_MASKS}}` | `make/commands.sh` | `<language>/layer.env` (`test_command`, `test_masks`) |
 
 `<language>/layer.env` is the reference for all of them: one file per
 language, holding the base images, the entrypoint ECS starts the

@@ -23,7 +23,11 @@ MODE=local ./build/main
 
 There is no test runner yet: `tests/unit/test_placeholder.cpp` is not in
 `CMakeLists.txt`. Add a test executable there (and `enable_testing()` plus
-`add_test()` for `ctest`) when the project has tests.
+`add_test()` for `ctest`) when the project has tests. Then set
+`TEST_COMMAND` in `make/commands.sh` (for example
+`cmake -S . -B build && cmake --build build && ctest --test-dir build --output-junit "$JUNIT"`),
+so `make test` and the pipeline run them. Until then `make test` reports
+that there is nothing to run.
 
 ```zsh
 make lint      # clang-format --dry-run, cfn-lint

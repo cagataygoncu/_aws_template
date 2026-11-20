@@ -20,6 +20,7 @@ MODE=local npm run server     # node build/src/main_server.js
 
 ```zsh
 npm run build && npm test     # node --test on build/tests/unit
+make test                     # as the pipeline: in the base image, JUnit to reports/
 make lint                     # tsc --noEmit, eslint, cfn-lint
 ```
 

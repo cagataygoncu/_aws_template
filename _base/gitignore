@@ -16,3 +16,6 @@
 *.pem
 
 *.log
+
+# JUnit reports `make test` writes.
+/reports/

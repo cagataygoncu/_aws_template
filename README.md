@@ -70,7 +70,7 @@ Three skills drive these: `cg-aws-template-new`, `cg-aws-template-release`
 `cg-aws-template-upgrade` (upgrade, resolve conflicts, port seed changes).
 
 A generated project has its own `make help`. The commands you use most:
-`make local-dev-setup`, `make lint`, `make local-build`, `make local-run`,
+`make local-dev-setup`, `make test`, `make lint`, `make local-build`, `make local-run`,
 `make deploy-cicd <target>`, `make push`, `make versions`, `make sync-versions`.
 
 ## Conventions

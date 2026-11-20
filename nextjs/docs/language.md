@@ -21,7 +21,9 @@ this project: put real values there, never in git.
 
 ## Test
 
-There are no unit tests yet. Until there are:
+There are no unit tests yet: `make test` reports that there is nothing to
+run. When you add some, set `TEST_COMMAND` in `make/commands.sh`, so `make
+test` and the pipeline run them. Until then:
 
 ```zsh
 npm run build      # next build: type errors fail it

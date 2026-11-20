@@ -419,6 +419,15 @@ LINT_TOOL="{{LINT_TOOL}}"
 LINT_COMMAND="{{LINT_COMMAND}}"
 LINT_INSTALL="{{LINT_INSTALL}}"
 
+# `make test`: the unit tests, run inside the service base image - the
+# versions in mise.toml - with the project mounted, the same way here and in
+# the pipeline's test stage. Filled in per language by bootstrap; an empty
+# command means the project has no unit tests yet. Single quotes: the command
+# is run by the container's shell, not this one.
+TEST_IMAGE='{{BASE_IMAGE_SERVICE}}'   # single quotes: ${mise:...} is resolved later, not by bash
+TEST_COMMAND='{{TEST_COMMAND}}'
+TEST_MASKS="{{TEST_MASKS}}"
+
 lint() {
     lint_versions
     echo
@@ -432,6 +441,61 @@ lint() {
 lint_versions() {
     echo "running: ./make/versions.sh check"
     ./make/versions.sh check
+}
+
+# Run the unit tests in a container of the service base image, with the
+# project mounted at /src. The pipeline's test stage runs exactly this, so a
+# pass here is a pass there. A JUnit report goes to
+# $TEST_REPORT_DIRECTORY/$TEST_REPORT_FILENAME (default reports/unit_tests.xml),
+# which the pipeline publishes as a CodeBuild test report.
+#
+#   test
+#
+test_unit() {
+    if [[ -z "$TEST_COMMAND" ]]; then
+        echo "no unit tests configured: TEST_COMMAND in make/commands.sh is empty - nothing to run"
+        return 0
+    fi
+    require_command docker
+
+    local image report_dir report_file
+    image=$(./make/versions.sh expand "$TEST_IMAGE") || exit 1
+    report_dir="${TEST_REPORT_DIRECTORY:-reports}"
+    report_file="${TEST_REPORT_FILENAME:-unit_tests.xml}"
+    mkdir -p "$report_dir"
+    report_dir=$(cd "$report_dir" && pwd)
+
+    # Private git dependencies authenticate through the ssh agent: Docker
+    # Desktop exposes the Mac's agent at a fixed path; on Linux (the pipeline)
+    # the socket is mounted as it is.
+    local ssh_args=()
+    if [[ "$(uname -s)" == Darwin ]]; then
+        ssh_args=(-v /run/host-services/ssh-auth.sock:/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent)
+    elif [[ -n "${SSH_AUTH_SOCK:-}" ]]; then
+        ssh_args=(-v "$SSH_AUTH_SOCK:/ssh-agent" -e SSH_AUTH_SOCK=/ssh-agent)
+    fi
+
+    local mask_args=() mask
+    for mask in $TEST_MASKS; do
+        mask_args+=(-v "/src/$mask")
+    done
+
+    echo "testing in ${image}"
+    echo "running: ${TEST_COMMAND}"
+    # ${a[@]+"${a[@]}"}: bash 3.2 treats an empty array as unset under set -u.
+    docker run --rm \
+        -v "$PWD:/src" -w /src \
+        ${mask_args[@]+"${mask_args[@]}"} \
+        -v "$report_dir:/reports" -e JUNIT="/reports/$report_file" \
+        -e MODE=local -e PYTHONPATH=/src \
+        -e GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new" \
+        ${ssh_args[@]+"${ssh_args[@]}"} \
+        "$image" sh -c "$TEST_COMMAND"
+    if [[ -s "${report_dir}/${report_file}" ]]; then
+        echo "tests ok; report: ${report_dir}/${report_file}"
+    else
+        echo "tests ok (no JUnit report: this language's runner writes none)"
+    fi
 }
 
 # The tool versions mise.toml declares, and the images they resolve to.
@@ -2195,6 +2259,8 @@ project
   help
 
 pipeline
+  test                                        unit tests, in the service base image
+                                              (the same run the pipeline does)
   lint                                        static checks: versions agree with
                                               mise.toml, the source, and
                                               cfn-lint over every template
@@ -2278,6 +2344,7 @@ case "$command" in
     targets)        targets           ;;
     template-version) template_version "$@" ;;
     lint)           lint              ;;
+    test)           test_unit         ;;
     versions)       versions          ;;
     sync-versions)  sync_versions     ;;
     validate)       validate     "$@" ;;

@@ -18,7 +18,7 @@ flowchart TB
   subgraph G0100["G0100 Seconds - in the editor"]
     direction LR
     C0100["C0100 Edit code<br/>MODE=local: no AWS secrets read"]
-    C0200["C0200 Unit tests<br/>tests/unit, run or F5 'Unit tests'"]
+    C0200["C0200 Unit tests<br/>the runner, F5 'Unit tests',<br/>or make test (as the pipeline)"]
     C0300["C0300 Debug<br/>F5: Task, Server, Lambda handler"]
   end
 
@@ -32,7 +32,7 @@ flowchart TB
   subgraph G0300["G0300 Against AWS"]
     direction LR
     C0700["C0700 make validate &lt;target&gt;<br/>templates + parameters"]
-    C0800["C0800 git push / make push<br/>pipeline builds and deploys"]
+    C0800["C0800 git push / make push<br/>pipeline: make test, build, deploy"]
     C0900["C0900 make url · logs · events<br/>check the deployed service"]
   end
 

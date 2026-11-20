@@ -59,7 +59,7 @@ the top. At the first failure, go back to editing.
 
 | Step | Command | What it proves | Needs |
 |---|---|---|---|
-| 1. Unit tests | see [language.md](language.md), or F5 *Unit tests* | the logic works | nothing else |
+| 1. Unit tests | the language's runner (see [language.md](language.md)), F5 *Unit tests*, or `make test` | the logic works | `make test`: Docker |
 | 2. Debug | F5 in VS Code | you can step through the failing path | nothing else |
 | 3. Lint | `make lint` | versions agree with `mise.toml`, the code passes its linter, the CloudFormation templates pass cfn-lint | `make local-dev-setup` |
 | 4. Build the image | `make local-build <target>` | the Dockerfile builds with the system packages | Docker |
@@ -96,15 +96,29 @@ shell in a running `make local-run` container.
 
 | Level | Where the tests live | Runs |
 |---|---|---|
-| Unit | `tests/unit/` (elixir: `test/`) | on your Mac, in the devcontainer, F5 |
+| Unit | `tests/unit/` (elixir: `test/`) | the language's runner on your Mac, F5, or `make test` |
 | Lint | the language's linter, plus cfn-lint | `make lint` |
 | Image | the Dockerfile | `make local-build`, then `make local-run` / `make invoke` |
 | Deployment | the CloudFormation templates | `make validate <target>` |
 
-The pipeline's test stage (`RunTests` in `cicd_parameters.json`) runs
-`pytest` and expects `tests/requirements.txt`. It is python-only, and
-projects do not ship that file yet. Set `RunTests` to `"false"` until the
-stage fits this project.
+**`make test`** runs the unit tests the way the pipeline does: inside the
+service base image, at the versions in `mise.toml`, with the project mounted.
+It writes a JUnit report to `reports/unit_tests.xml` (elixir writes none).
+Run it before you push: a pass here is a pass in the pipeline.
+
+The language's own runner is faster for the edit-test loop. `make test` is
+the check that the tests pass on Linux, at the pinned versions, with a clean
+dependency install.
+
+**The pipeline's test stage** runs when `RunTests` is `"true"` in the
+target's `cicd_parameters.json`. It runs `make test` in CodeBuild, before
+the image is built, and publishes the JUnit report as a CodeBuild test
+report. A failing test stops the deployment. A project without unit tests
+yet (cpp and nextjs, at first) passes the stage with a note.
+
+```
+CodeBuild test stage  ->  ./make/commands.sh test  ->  docker run <service base image> <test command>
+```
 
 ## The devcontainer
 
@@ -147,3 +161,5 @@ environment.
 | A build fails with "authorization token has expired" | an old ECR Public login | `init.sh` refreshes it; or `docker logout public.ecr.aws` |
 | `ssh-keyscan` or a private git dependency fails in a build | no ssh agent key | `ssh-add ~/.ssh/<key>` on your Mac |
 | A C library is missing in the image | it is not in a package list | add it to `system_packages.txt` or `system_packages_build.txt` |
+| `make test` cannot fetch a private git dependency | no ssh agent key | `ssh-add ~/.ssh/<key>` on your Mac; the pipeline loads its own key |
+| `make test` passes but the language's runner fails, or the reverse | different versions or dependencies on your Mac | trust `make test`: it uses the pinned versions; then `make local-dev-setup` |

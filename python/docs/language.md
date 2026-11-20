@@ -22,6 +22,7 @@ MODE=local uvicorn src.main_server:app --port {{CONTAINER_PORT}} --reload # the 
 ```zsh
 python -m pytest tests/unit          # all unit tests
 python -m pytest tests/unit -k name  # one test by name
+make test                            # as the pipeline: in the base image, JUnit to reports/
 make lint                            # ruff check, ruff format --check, cfn-lint
 ```
 

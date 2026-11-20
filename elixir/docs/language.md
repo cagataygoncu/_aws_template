@@ -21,6 +21,7 @@ iex -S mix                         # an interactive shell with the app loaded
 ```zsh
 mix test                           # tests in test/
 mix test test/app_test.exs:12      # one test, by line
+make test                          # as the pipeline: in the base image (no JUnit report)
 make lint                          # mix format --check-formatted, compile warnings, cfn-lint
 ```
 

@@ -827,7 +827,10 @@ It is worked through with `aws-service-template` as the example.
    layer cannot serve all three — anything not listed is deleted after the
    overlay rather than shipped broken.
 6. Set `next_steps` in `layer.env`: the build/test line printed once the
-   project exists. Then run `make check`: it fails on any file the layer
+   project exists. Set `test_command` (the unit tests, run by `make test` and
+   the pipeline inside the service base image, writing JUnit to `$JUNIT`; no
+   single quotes) and `test_masks` (folders kept off the host, such as
+   `node_modules`). Then run `make check`: it fails on any file the layer
    ships that no rule in `template_manifest.txt` covers.
 7. Add any manifest the Dockerfiles `COPY` to `_base/.dockerignore`, which
    ignores everything by default — a missing entry fails the build at the

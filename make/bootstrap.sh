@@ -88,6 +88,10 @@ language_dir="$template_dir/$language"
 #                        README's `make local-run` examples
 #   lint_tool, lint_command, lint_install    what `make lint` runs
 #   healthcheck_command  what the container health check runs; empty = none
+#   test_command         `make test`: the unit tests, run in the service base
+#                        image; empty = the layer has none yet
+#   test_masks           folders `make test` keeps off the host (a throwaway
+#                        volume each), such as node_modules
 #   supported_targets    optional; the targets the layer can serve
 #   next_steps           the build/test line printed once the project exists
 #
@@ -217,6 +221,8 @@ lint_tool_sed=$(sed_replacement "$lint_tool")
 lint_command_sed=$(sed_replacement "$lint_command")
 lint_install_sed=$(sed_replacement "$lint_install")
 healthcheck_command_sed=$(sed_replacement "$healthcheck_command")
+test_command_sed=$(sed_replacement "$test_command")
+test_masks_sed=$(sed_replacement "$test_masks")
 
 substitute_in_file() {
     local file=$1
@@ -244,6 +250,8 @@ substitute_in_file() {
         -e "s|{{LINT_COMMAND}}|$lint_command_sed|g" \
         -e "s|{{LINT_INSTALL}}|$lint_install_sed|g" \
         -e "s|{{HEALTHCHECK_COMMAND}}|$healthcheck_command_sed|g" \
+        -e "s|{{TEST_COMMAND}}|$test_command_sed|g" \
+        -e "s|{{TEST_MASKS}}|$test_masks_sed|g" \
         "$file" > "$tmp" && cat "$tmp" > "$file"
     # cat back into the original rather than mv over it: mv gives the file
     # mktemp's 0600, which silently stripped the executable bit from
@@ -253,7 +261,7 @@ substitute_in_file() {
 
 echo ">>> Substituting placeholders (project name, language, images, entrypoints)"
 while IFS= read -r -d '' file; do
-    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+|HEALTHCHECK_COMMAND)\}\}' "$file" 2>/dev/null; then
+    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+|HEALTHCHECK_COMMAND|TEST_COMMAND|TEST_MASKS)\}\}' "$file" 2>/dev/null; then
         substitute_in_file "$file"
     fi
 done < <(find "$destination_dir" -type f \

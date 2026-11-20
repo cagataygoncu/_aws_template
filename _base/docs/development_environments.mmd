@@ -30,11 +30,11 @@ flowchart LR
       C0700["C0700 .devcontainer/service/<br/>the deployed service image"]
       C0800["C0800 .devcontainer/lambda/<br/>the deployed lambda image"]
     end
-    C0900["C0900 make local-build · local-run · invoke<br/>the deployed image, run locally"]
+    C0900["C0900 make test · local-build · local-run · invoke<br/>base image / deployed image, run locally"]
   end
 
   subgraph G0500["G0500 AWS"]
-    C1000["C1000 CodePipeline + CodeBuild<br/>buildspec.yaml"]
+    C1000["C1000 CodePipeline + CodeBuild<br/>Test: make test<br/>Build: buildspec.yaml"]
     C1100["C1100 ECS service / task<br/>or Lambda"]
   end
 

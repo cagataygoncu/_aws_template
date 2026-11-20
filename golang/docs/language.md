@@ -20,6 +20,7 @@ MODE=local PORT={{CONTAINER_PORT}} go run ./src/main_server   # the server
 ```zsh
 go test ./tests/...              # all unit tests
 go test ./tests/... -run Name    # one test
+make test                        # as the pipeline: in the base image, JUnit to reports/
 make lint                        # go vet, gofmt, cfn-lint
 ```
 
