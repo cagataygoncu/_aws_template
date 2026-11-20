@@ -344,6 +344,15 @@ nextjs only. The other languages receive nothing.
 | `.env.local` (seed) ships with the template. It was git-ignored in the template, so releases and upgrades never carried it, and only `make new` from a working tree did | nothing if the project has one: `make upgrade` leaves it alone. A project without one gets the template's copy; fill in its values |
 | `next-env.d.ts` (template) ships with the template, for the same reason | nothing: `make upgrade` adds it |
 | Layer ignore files are stored as `gitignore` in the template and renamed at bootstrap; a project's `.gitignore` is unchanged | nothing |
+
+### Since v1.2.0
+
+Every language. Run `make upgrade <project> v1.2.0`; nothing needs porting by hand.
+
+| Change | Action in the project |
+|---|---|
+| **`.gitignore`** (template) is now `_base/gitignore` + `<language>/gitignore`. The shared part ignores `/venv/` (the environment `make local-dev-setup` creates), OS and editor files, `.env`, `*.pem` and `*.log` | python, golang, cpp: nothing, `make upgrade` adds the file. typescript, nextjs, elixir: nothing, the shared entries merge in above the language's own |
+| python, golang and cpp get language entries for the first time: bytecode and tool caches, `build/` trees, debugger and test binaries | if the project already committed such files (a `venv/` or `build/`, say), remove them from git: `git rm -r --cached venv build` |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
