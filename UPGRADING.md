@@ -458,6 +458,18 @@ Every language. Run `make upgrade <project> v2.5.0`, then `make local-dev-setup`
 | typescript, nextjs: each `npm` step in the Dockerfiles mounts the ssh agent (template) | by hand: add `git` and `openssh-client` to `system_packages_build.txt` (seed) - `seed.patch` has the lines. Without them, private npm packages cannot be fetched in the image |
 | typescript: `make test` installs `git` in its image when `package.json` uses git dependencies (template) | nothing |
 
+### Since v2.6.0
+
+Every language. Run `make upgrade <project> v2.6.0`.
+
+| Change | Action in the project |
+|---|---|
+| **Private repositories with a token**: with `GITHUB_TOKEN` set, git fetches them over HTTPS with the token; without it, over ssh as before. `make/github_env.sh` (template) decides, and `mise.toml`, `make`, `make local-dev-setup`, `make test`, `make local-build` and every Dockerfile install step use it | nothing to keep ssh. For the token route: `export GITHUB_TOKEN="$(gh auth token)"` |
+| go: `mise.toml` keeps only `GOPRIVATE`; the ssh rewrite now comes from `make/github_env.sh`. The Dockerfiles no longer set a global git rewrite (template) | nothing |
+| Pipeline: optional `GitHubTokenSecretArn` puts a Secrets Manager token in both CodeBuild projects; without it the ssh key is fetched as before (template: `cicd.yaml`, both buildspecs) | to use a token: add `{"ParameterKey": "GitHubTokenSecretArn", "ParameterValue": "<secret arn>"}` to each target's `cicd_parameters.json` (seed), then `make deploy-cicd` |
+| The build no longer passes `--build-arg GITHUB_TOKEN`: build arguments are stored in the image history. The token is a BuildKit secret now | nothing |
+| Devcontainers pass `GITHUB_TOKEN` in through `remoteEnv` (template) | nothing |
+
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
