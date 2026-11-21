@@ -61,9 +61,35 @@ requirements=()
 [[ -f requirements.txt ]] && requirements+=(-r requirements.txt)
 [[ -f .devcontainer/requirements_dev.txt ]] && requirements+=(-r .devcontainer/requirements_dev.txt)
 if (( ${#requirements[@]} )); then
+    # Private packages come from GitHub over ssh (git+ssh:// lines). Check the
+    # way in first: a failure deep in pip's output is easy to miss, and leaves
+    # a ./.venv with nothing in it.
+    # Files, not a pipe into grep -q: under pipefail that pipe reports failure
+    # whenever grep stops reading early. The key may come from the ssh agent
+    # or from ~/.ssh/config, so the test is a real login, not ssh-add -l.
+    if grep -qs '^[^#]*git+ssh://' requirements.txt .devcontainer/requirements_dev.txt; then
+        echo "Checking ssh access to GitHub, for the git+ssh packages..."
+        # ssh -T exits 1 even on success (GitHub gives no shell): read the text.
+        github=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
+            -T git@github.com 2>&1 || true)
+        if [[ "$github" != *"successfully authenticated"* ]]; then
+            die "Error: ssh cannot log in to GitHub, and requirements.txt installs packages
+  from GitHub over ssh (git+ssh://). ssh -T git@github.com said:
+    ${github:-<nothing>}
+  Add your GitHub key to the ssh agent, then run make local-dev-setup again:
+    ssh-add ~/.ssh/<your key>"
+        fi
+    fi
+
     echo "Installing python packages into ./.venv..."
     mise exec -- python -m pip install --quiet --upgrade pip
-    mise exec -- python -m pip install "${requirements[@]}"
+    if ! mise exec -- python -m pip install "${requirements[@]}"; then
+        die "
+Error: pip could not install the requirements - the reason is above.
+  ./.venv exists but is incomplete, so imports will fail in the editor.
+  Fix the cause, then run make local-dev-setup again."
+    fi
+    echo "Installed $(mise exec -- python -m pip list 2> /dev/null | tail -n +3 | wc -l | tr -d ' ') packages into ./.venv."
 fi
 
 echo
