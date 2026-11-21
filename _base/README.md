@@ -388,11 +388,24 @@ pipeline).
 ```zsh
 make validate                  # cicd.yaml + the target's deployment.yaml
 make sync-config               # once, and whenever the env file changes
-make deploy-cicd               # create/update the pipeline, wire the git remote
+make deploy-cicd               # check existing stacks, create/update the pipeline, wire the git remote
 make push <branch>             # push it to CodeCommit main, starting the pipeline
 make pipeline                  # stage states
 make pipeline-stop             # abandon the running execution
 ```
+
+Before it deploys, `make deploy-cicd` checks both stacks:
+
+| It finds | It does |
+|---|---|
+| neither stack | says both will be created, and goes on |
+| one or both stacks | lists each with its status and when it last changed, then asks `(y/n)` in a terminal (elsewhere it warns and goes on) |
+| a pipeline that deploys another target | says so: its next run would replace `{{PROJECT_NAME}}` with this target's template |
+| a stack mid-operation (`*_IN_PROGRESS`) | stops: wait for it (`make events`) |
+| a pipeline in `ROLLBACK_COMPLETE` | stops: it cannot be updated, so `make delete-cicd` first |
+
+A stack you did not expect usually means `PROJECT_NAME` in `project.env`
+names another project. Answer `n` and fix it.
 
 Every parameter the pipeline resolves lives in `cicd_parameters.json` — include
 each one, even where the template's default is correct. `aws cloudformation

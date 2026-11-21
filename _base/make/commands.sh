@@ -648,6 +648,65 @@ validate() {
 #   deploy-cicd lambda
 #   PROJECT_NAME=lambda-test-1 deploy-cicd lambda
 #
+# Before deploy-cicd changes anything: say which of the two stacks already
+# exist, and what the deploy would do to them. Updating an existing pipeline
+# is normal - but a pipeline for another target, or a stack nobody meant to
+# touch (the PROJECT_NAME of a different project), is how a live service gets
+# replaced. In a terminal it asks before going on; elsewhere it only warns.
+#
+#   existing_stacks_check service/task
+#
+existing_stacks_check() {
+    local target=$1
+    local stack state status changed existing_file new_file found=""
+    new_file=$(parameter_value "$target" DeploymentCfnFilename)
+
+    for stack in "$CICD_STACK_NAME" "$STACK_NAME"; do
+        state=$(aws cloudformation describe-stacks --stack-name "$stack" \
+            --query 'Stacks[0].[StackStatus, LastUpdatedTime || CreationTime]' \
+            --output text 2> /dev/null) || continue
+        status=${state%%$'\t'*}
+        changed=${state#*$'\t'}
+        found+="  ${stack}  ${status}  last changed ${changed%%.*}"$'\n'
+
+        case "$status" in
+            *_IN_PROGRESS)
+                die "ERROR: ${stack} is ${status}. Wait for it to finish: make events ${stack}" ;;
+            ROLLBACK_COMPLETE)
+                if [[ "$stack" == "$CICD_STACK_NAME" ]]; then
+                    die "ERROR: ${stack} is ROLLBACK_COMPLETE and cannot be updated. Delete it first: make delete-cicd"
+                fi ;;
+        esac
+
+        if [[ "$stack" == "$CICD_STACK_NAME" ]]; then
+            existing_file=$(aws cloudformation describe-stacks --stack-name "$stack" \
+                --query "Stacks[0].Parameters[?ParameterKey=='DeploymentCfnFilename'].ParameterValue | [0]" \
+                --output text 2> /dev/null || true)
+            if [[ -n "$existing_file" && "$existing_file" != None && "$existing_file" != "$new_file" ]]; then
+                found+="    it deploys ${existing_file}; this deploy switches it to ${new_file}."$'\n'
+                found+="    Its next run replaces ${STACK_NAME} with the ${target} template."$'\n'
+            fi
+        fi
+    done
+
+    if [[ -z "$found" ]]; then
+        echo "new: neither ${CICD_STACK_NAME} nor ${STACK_NAME} exists - both will be created"
+        return 0
+    fi
+
+    echo ""
+    echo "WARNING: these stacks already exist in account $(aws sts get-caller-identity --query Account --output text 2> /dev/null) (${AWS_PROFILE}, ${AWS_REGION}):"
+    printf '%s' "$found"
+    echo "deploy-cicd updates ${CICD_STACK_NAME} in place, and the pipeline then redeploys ${STACK_NAME}."
+    echo "If these are not this project's stacks, stop and set PROJECT_NAME in project.env."
+
+    if [[ -t 0 ]]; then
+        confirm "update ${CICD_STACK_NAME}"
+    else
+        echo "(not a terminal: continuing)"
+    fi
+}
+
 deploy_cicd() {
     local target="${1:-$TARGET}"
     require_command jq
@@ -656,6 +715,7 @@ deploy_cicd() {
     parameters=$(parameters_file "$target")
 
     validate "$target"
+    existing_stacks_check "$target"
 
     # The pipeline gets BaseImageURI as a pattern and resolves it from
     # mise.toml at build time. Resolve it once here too, so a tool missing
@@ -2265,7 +2325,8 @@ pipeline
                                               mise.toml, the source, and
                                               cfn-lint over every template
   validate       [target]                     cicd + deployment templates
-  deploy-cicd    [target]                     create/update the pipeline stack
+  deploy-cicd    [target]                     create/update the pipeline stack;
+                                              warns first if either stack exists
   config         [target]                     where the environment file is read
                                               from, and whether it is there
   sync-config    [target]                     upload the environment file and
