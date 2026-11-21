@@ -37,7 +37,7 @@ _aws_template/
 │   ├── mise.toml           # default tool versions (shipped)
 │   ├── LAYER.md            # what the layer holds (never shipped)
 │   ├── system_packages.txt, system_packages_build.txt   # Debian packages (shipped)
-│   ├── docs/language.md    # the language's run, test and debug notes (shipped)
+│   ├── notes_language.md   # the language's section of the project's NOTES.md
 │   └── src/, tests/, targets/*/Dockerfile, .devcontainer/, .vscode/
 ├── make/
 │   ├── bootstrap.sh        # make new

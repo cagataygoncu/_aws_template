@@ -1,22 +1,22 @@
-# Elixir in {{PROJECT_NAME}}
+## Elixir
 
-The Elixir commands behind the steps in [README.md](../README.md): the tools,
-how to run, test and debug. Reasons and details: [NOTES.md](../NOTES.md). Tool versions are in `mise.toml`.
+The Elixir tools, and how to run, test and debug. Tool versions are in
+`mise.toml`.
 
-## Tools
+### Tools
 
 `mise.toml` installs elixir, erlang (the OTP release), cfn-lint and uv. The
 first `mise install` builds Erlang from source, which takes several minutes.
 Dependencies come from `mix.exs`: run `mix deps.get` once.
 
-## Run
+### Run
 
 ```zsh
 MODE=local mix run --no-halt       # the application
 iex -S mix                         # an interactive shell with the app loaded
 ```
 
-## Test
+### Test
 
 ```zsh
 mix test                           # tests in test/
@@ -25,7 +25,7 @@ make test                          # as the pipeline: in the base image (no JUni
 make lint                          # mix format --check-formatted, compile warnings, cfn-lint
 ```
 
-## Debug (F5)
+### Debug (F5)
 
 | Configuration | Starts |
 |---|---|
@@ -34,7 +34,7 @@ make lint                          # mix format --check-formatted, compile warni
 
 Both use the ElixirLS debugger. `IEx.pry` works in `iex -S mix`.
 
-## Devcontainer
+### Devcontainer
 
 The dev image is the official elixir image for the versions in `mise.toml`
 (no Erlang build) plus both package lists. The image builders set

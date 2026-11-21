@@ -845,9 +845,10 @@ It is worked through with `aws-service-template` as the example.
    also acts on this repo, and would stop git tracking files new projects
    need (nextjs's ignored `.env.local` until 2026-11). Keep the root
    `.gitignore` free of such files too.
-9. Write `<language>/docs/language.md`: the tools, run, test and debug
-   commands, and the debug configurations. The project's `README.md` and
-   `NOTES.md` link it. A project's README holds numbered steps only; reasons
+9. Write `<language>/notes_language.md`, starting with `## <Language>`: the
+   tools, run, test and debug commands, and the debug configurations.
+   Bootstrap puts it into the project's `NOTES.md` in place of the
+   `{{LANGUAGE_NOTES}}` line. A project's README holds numbered steps only; reasons
    and details go in its `NOTES.md`, and diagrams stay out of projects.
 10. Write a short `<language>/LAYER.md` describing what's inside. It is excluded
    from the rsync, so it documents the layer without shipping to projects.

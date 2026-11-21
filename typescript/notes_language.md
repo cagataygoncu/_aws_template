@@ -1,14 +1,14 @@
-# TypeScript in {{PROJECT_NAME}}
+## TypeScript
 
-The TypeScript commands behind the steps in [README.md](../README.md): the tools,
-how to run, test and debug. Reasons and details: [NOTES.md](../NOTES.md). Tool versions are in `mise.toml`.
+The TypeScript tools, and how to run, test and debug. Tool versions are in
+`mise.toml`.
 
-## Tools
+### Tools
 
 `mise.toml` installs node, cfn-lint and uv. npm packages come from
 `package.json`: run `npm install` once after `make local-dev-setup`.
 
-## Run
+### Run
 
 ```zsh
 npm run build                 # tsc -> build/
@@ -16,7 +16,7 @@ MODE=local npm run task       # node build/src/main_task.js
 MODE=local npm run server     # node build/src/main_server.js
 ```
 
-## Test
+### Test
 
 ```zsh
 npm run build && npm test     # node --test on build/tests/unit
@@ -26,7 +26,7 @@ make lint                     # tsc --noEmit, eslint, cfn-lint
 
 `npm test` runs the compiled tests, so build first.
 
-## Debug (F5)
+### Debug (F5)
 
 | Configuration | Starts |
 |---|---|
@@ -37,7 +37,7 @@ make lint                     # tsc --noEmit, eslint, cfn-lint
 
 All of them set `MODE=local`.
 
-## Devcontainer
+### Devcontainer
 
 The dev image is the official node image (bookworm-slim) plus both package
 lists. A native npm module needs its build tools in

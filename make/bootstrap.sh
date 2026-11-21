@@ -148,6 +148,8 @@ rsync_excludes=(
     # it must not ship - and it would overwrite _base/README.md if it did,
     # since the language layer rsyncs second.
     --exclude='LAYER.md'
+    # The layer's notes: joined into NOTES.md below, not shipped on their own.
+    --exclude='notes_language.md'
     # The layer's placeholder values: input to this script, not project code.
     # What a project needs to repeat the render is in .template.env instead.
     --exclude='layer.env'
@@ -175,6 +177,22 @@ if [[ -f "$destination_dir/gitignore" ]]; then
         fi
     } > "$destination_dir/.gitignore"
     rm -f "$destination_dir/gitignore"
+fi
+
+# NOTES.md: the shared notes, with the language's section in place of the
+# {{LANGUAGE_NOTES}} line. The layer keeps it as notes_language.md, so a
+# project has one notes file, not two.
+if [[ -f "$destination_dir/NOTES.md" ]]; then
+    notes_tmp=$(mktemp)
+    awk -v notes="$language_dir/notes_language.md" '
+        $0 == "{{LANGUAGE_NOTES}}" {
+            while ((getline line < notes) > 0) print line
+            next
+        }
+        { print }
+    ' "$destination_dir/NOTES.md" > "$notes_tmp"
+    cat "$notes_tmp" > "$destination_dir/NOTES.md"
+    rm -f "$notes_tmp"
 fi
 
 # ---- targets this language cannot serve ---------------------------------

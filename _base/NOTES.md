@@ -2,7 +2,7 @@
 
 The details and reasons behind the steps in [README.md](README.md). Read a
 section at a time: `grep -n '^#' NOTES.md` lists them. The {{LANGUAGE}}
-commands and debug configurations are in [docs/language.md](docs/language.md).
+commands and debug configurations have their own section, after **Development**.
 
 ## Project name and target
 
@@ -286,7 +286,7 @@ the top. At the first failure, go back to editing.
 
 | Step | Command | What it proves | Needs |
 |---|---|---|---|
-| 1. Unit tests | the language's runner (see [language.md](docs/language.md)), F5 *Unit tests*, or `make test` | the logic works | `make test`: Docker |
+| 1. Unit tests | the language's runner (see the language section), F5 *Unit tests*, or `make test` | the logic works | `make test`: Docker |
 | 2. Debug | F5 in VS Code | you can step through the failing path | nothing else |
 | 3. Lint | `make lint` | versions agree with `mise.toml`, the code passes its linter, the CloudFormation templates pass cfn-lint | `make local-dev-setup` |
 | 4. Build the image | `make local-build <target>` | the Dockerfile builds with the system packages | Docker |
@@ -304,7 +304,7 @@ without it to test the real path against AWS.
 
 Press **F5** in VS Code and pick a configuration. The configurations start
 the same entry points the deployed images run: the task, the server, the
-lambda handler, the unit tests. [language.md](docs/language.md) lists them.
+lambda handler, the unit tests. The language section lists them.
 
 The same `.vscode/launch.json` works on your Mac and in the devcontainer.
 Debug in the devcontainer when the code needs a Linux system library, or for
@@ -452,6 +452,8 @@ old path — `dev.containers.dockerPath` in user settings.
 | A C library is missing in the image | it is not in a package list | add it to `system_packages.txt` or `system_packages_build.txt` |
 | `make test` cannot fetch a private git dependency | no ssh agent key | `ssh-add ~/.ssh/<key>` on your Mac; the pipeline loads its own key |
 | `make test` passes but the language's runner fails, or the reverse | different versions or dependencies on your Mac | trust `make test`: it uses the pinned versions; then `make local-dev-setup` |
+
+{{LANGUAGE_NOTES}}
 
 ## Check what you are about to touch
 

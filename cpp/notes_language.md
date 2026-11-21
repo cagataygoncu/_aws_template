@@ -1,9 +1,9 @@
-# C++ in {{PROJECT_NAME}}
+## C++
 
-The C++ commands behind the steps in [README.md](../README.md): the tools,
-how to run, test and debug. Reasons and details: [NOTES.md](../NOTES.md). Tool versions are in `mise.toml`.
+The C++ tools, and how to run, test and debug. Tool versions are in
+`mise.toml`.
 
-## Tools
+### Tools
 
 `mise.toml` installs cmake, ninja, clang-format, cfn-lint and uv. The
 compiler is the system one: Xcode command-line tools on a Mac
@@ -11,7 +11,7 @@ compiler is the system one: Xcode command-line tools on a Mac
 such as OpenSSL come from `system_packages_build.txt` in the containers, and
 from Homebrew on a Mac.
 
-## Run
+### Run
 
 ```zsh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
@@ -19,7 +19,7 @@ cmake --build build
 MODE=local ./build/main
 ```
 
-## Test
+### Test
 
 There is no test runner yet: `tests/unit/test_placeholder.cpp` is not in
 `CMakeLists.txt`. Add a test executable there (and `enable_testing()` plus
@@ -33,7 +33,7 @@ that there is nothing to run.
 make lint      # clang-format --dry-run, cfn-lint
 ```
 
-## Debug (F5)
+### Debug (F5)
 
 | Configuration | Starts |
 |---|---|
@@ -43,7 +43,7 @@ It sets `MODE=local`. gdb is in the devcontainer, not on a Mac: debug C++ in
 the devcontainer. The binary name comes from `add_executable()` in
 `CMakeLists.txt`; rename both together.
 
-## Devcontainer
+### Devcontainer
 
 The dev image is Debian (the release in `mise.toml`) plus both package
 lists, gdb and the C++ toolchain. This is the main place to build and debug

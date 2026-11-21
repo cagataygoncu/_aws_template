@@ -60,8 +60,6 @@ template  Makefile
 template  make/*
 template  README.md
 template  NOTES.md
-# The language's run, test and debug commands.
-template  docs/language.md
 template  .dockerignore
 template  .gitignore
 template  targets/common/*
@@ -89,3 +87,4 @@ retired   environment.yaml
 retired   tests/integration/*
 retired   .github/*
 retired   docs/development*
+retired   docs/language.md

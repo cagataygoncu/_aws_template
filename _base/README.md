@@ -3,9 +3,8 @@
 A {{LANGUAGE}} service on AWS, deployed as a Lambda function or a Fargate task.
 Every command is `make <command>`; `make help` lists them all.
 
-Each step below has its reasons and details in [NOTES.md](NOTES.md). The
-{{LANGUAGE}} commands and debug configurations are in
-[docs/language.md](docs/language.md).
+Each step below has its reasons and details in [NOTES.md](NOTES.md), which
+also has the {{LANGUAGE}} commands and debug configurations.
 
 ## 1. Set up (once)
 

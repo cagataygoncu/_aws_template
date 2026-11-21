@@ -1,21 +1,21 @@
-# Go in {{PROJECT_NAME}}
+## Go
 
-The Go commands behind the steps in [README.md](../README.md): the tools,
-how to run, test and debug. Reasons and details: [NOTES.md](../NOTES.md). Tool versions are in `mise.toml`.
+The Go tools, and how to run, test and debug. Tool versions are in
+`mise.toml`.
 
-## Tools
+### Tools
 
 `mise.toml` installs go, gopls (the language server), dlv (the debugger),
 cfn-lint and uv. Go modules come from `go.mod`.
 
-## Run
+### Run
 
 ```zsh
 MODE=local go run ./src/main_task                    # the task
 MODE=local PORT={{CONTAINER_PORT}} go run ./src/main_server   # the server
 ```
 
-## Test
+### Test
 
 ```zsh
 go test ./tests/...              # all unit tests
@@ -24,7 +24,7 @@ make test                        # as the pipeline: in the base image, JUnit to 
 make lint                        # go vet, gofmt, cfn-lint
 ```
 
-## Debug (F5)
+### Debug (F5)
 
 | Configuration | Starts |
 |---|---|
@@ -37,7 +37,7 @@ make lint                        # go vet, gofmt, cfn-lint
 All of them set `MODE=local`. dlv debugs natively on the Mac. In the
 devcontainer it attaches through `ptrace`, which the container allows.
 
-## Devcontainer
+### Devcontainer
 
 The dev image is the official golang image plus both package lists.
 `post_create.sh` installs the tools in `.devcontainer/tools_dev.txt` (gopls,
