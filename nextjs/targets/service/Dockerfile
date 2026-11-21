@@ -22,7 +22,12 @@ RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# Private packages come from GitHub over ssh: the agent is mounted for this
+# step only, and GitHub's host key is trusted first. Without git and ssh (in
+# system_packages_build.txt) the key step is skipped and npm runs as before.
+RUN --mount=type=ssh (mkdir -p -m 0700 ~/.ssh \
+        && ssh-keyscan github.com >> ~/.ssh/known_hosts) 2> /dev/null || true; \
+    npm ci --omit=dev
 
 ################################################################################################
 # Build stage - build the Next.js app (needs devDependencies for tailwindcss, postcss, typescript)
@@ -40,7 +45,12 @@ RUN packages=$(cat /tmp/system_packages_build.txt | sed -e 's/#.*//' | xargs); \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# Private packages come from GitHub over ssh: the agent is mounted for this
+# step only, and GitHub's host key is trusted first. Without git and ssh (in
+# system_packages_build.txt) the key step is skipped and npm runs as before.
+RUN --mount=type=ssh (mkdir -p -m 0700 ~/.ssh \
+        && ssh-keyscan github.com >> ~/.ssh/known_hosts) 2> /dev/null || true; \
+    npm ci
 
 COPY . .
 

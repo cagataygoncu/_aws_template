@@ -6,7 +6,7 @@ The TypeScript tools, and how to run, test and debug. Tool versions are in
 ### Tools
 
 `mise.toml` installs node, cfn-lint and uv. npm packages come from
-`package.json`: run `npm install` once after `make local-dev-setup`.
+`package.json`: `make local-dev-setup` runs `npm install`.
 
 ### Run
 

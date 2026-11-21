@@ -6,8 +6,8 @@ The Next.js tools, and how to run, test and debug. Tool versions are in
 ### Tools
 
 `mise.toml` installs node, cfn-lint and uv. npm packages come from
-`package.json` and `package-lock.json`: run `npm install` once after
-`make local-dev-setup`.
+`package.json` and `package-lock.json`: `make local-dev-setup` runs
+`npm install`.
 
 ### Run
 

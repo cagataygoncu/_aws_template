@@ -15,9 +15,11 @@ also has the {{LANGUAGE}} commands and debug configurations.
    echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
    ```
 
-2. Install the toolchain from `mise.toml`:
+2. Install the toolchain from `mise.toml`, and the dependencies. Private
+   packages come from GitHub over ssh, so load your key first:
 
    ```zsh
+   ssh-add ~/.ssh/<your GitHub key>
    make local-dev-setup
    ```
 

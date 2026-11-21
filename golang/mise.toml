@@ -23,3 +23,12 @@ uv = "0.13.9"
 "pipx:cfn-lint" = "1.60.1"
 "go:golang.org/x/tools/gopls" = "0.24.0"
 "go:github.com/go-delve/delve/cmd/dlv" = "1.27.2"
+
+[env]
+# Private modules (gig_utils_go and the rest of github.com/GIGTennis): go must
+# not ask the public proxy or checksum database for them, and git must fetch
+# them over ssh. Set only inside this project, by mise - nothing global.
+GOPRIVATE = "github.com/GIGTennis/*"
+GIT_CONFIG_COUNT = "1"
+GIT_CONFIG_KEY_0 = "url.git@github.com:GIGTennis/.insteadOf"
+GIT_CONFIG_VALUE_0 = "https://github.com/GIGTennis/"

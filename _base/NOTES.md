@@ -257,6 +257,40 @@ test code that needs them in the devcontainer. A lambda's final image is
 Amazon Linux, which the lists do not reach; install there with `dnf` in its
 Dockerfile.
 
+### Private packages
+
+Shared code lives in private GitHub repositories (`github.com/GIGTennis/...`),
+fetched over ssh. Declare one in the language's own dependency file:
+
+| Language | Where | Example |
+|---|---|---|
+| python | `requirements.txt` | `git+ssh://git@github.com/GIGTennis/<repo>.git@<tag>#subdirectory=<package>` |
+| go | `go.mod` | `require github.com/GIGTennis/<module> <version>` |
+| typescript, nextjs | `package.json` | `"<name>": "git+ssh://git@github.com:GIGTennis/<repo>.git#<tag>"` |
+| elixir | `mix.exs` | `{:<name>, git: "git@github.com:GIGTennis/<repo>.git", tag: "<tag>"}` |
+| C++ | `CMakeLists.txt` | `FetchContent_Declare(<name> GIT_REPOSITORY git@github.com:GIGTennis/<repo>.git GIT_TAG <tag>)` |
+
+Every place that installs dependencies reaches GitHub with your ssh key:
+
+| Where | How |
+|---|---|
+| `make local-dev-setup` | checks `ssh -T git@github.com` first, and stops with GitHub's own message if the key is refused |
+| `make test`, the devcontainer | the ssh agent is forwarded into the container |
+| `make local-build`, the pipeline | `docker build --ssh`: each install step mounts the agent (the pipeline loads its key from Secrets Manager) |
+
+Go also needs to know which modules are private: `GOPRIVATE` and a git
+rewrite to ssh are set in `mise.toml`'s `[env]` (for the shell and `make`) and
+in `.vscode/settings.json` (`go.toolsEnvVars`, for gopls). Another
+organisation means editing both.
+
+If `make local-dev-setup` says ssh cannot log in to GitHub, load your key and
+run it again:
+
+```zsh
+ssh-add -l                         # the keys the agent holds
+ssh-add ~/.ssh/<your GitHub key>
+```
+
 ### Tool versions
 
 `mise.toml` is the only place this project writes a tool version. The base

@@ -7,7 +7,7 @@ The Elixir tools, and how to run, test and debug. Tool versions are in
 
 `mise.toml` installs elixir, erlang (the OTP release), cfn-lint and uv. The
 first `mise install` builds Erlang from source, which takes several minutes.
-Dependencies come from `mix.exs`: run `mix deps.get` once.
+Dependencies come from `mix.exs`; `make local-dev-setup` runs `mix deps.get`.
 
 ### Run
 

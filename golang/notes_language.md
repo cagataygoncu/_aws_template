@@ -6,7 +6,9 @@ The Go tools, and how to run, test and debug. Tool versions are in
 ### Tools
 
 `mise.toml` installs go, gopls (the language server), dlv (the debugger),
-cfn-lint and uv. Go modules come from `go.mod`.
+cfn-lint and uv. Go modules come from `go.mod`; `make local-dev-setup` runs
+`go mod download`, including the private `gig_utils_go` (see **Private
+packages**).
 
 ### Run
 

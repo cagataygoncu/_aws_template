@@ -13,7 +13,12 @@ FROM ${BASE_IMAGE_URI} AS builder
 WORKDIR /var/task
 
 COPY package.json package-lock.json* ./
-RUN npm install
+# Private packages come from GitHub over ssh: the agent is mounted for this
+# step only, and GitHub's host key is trusted first. Without git and ssh (in
+# system_packages_build.txt) the key step is skipped and npm runs as before.
+RUN --mount=type=ssh (mkdir -p -m 0700 ~/.ssh \
+        && ssh-keyscan github.com >> ~/.ssh/known_hosts) 2> /dev/null || true; \
+    npm install
 
 COPY tsconfig.json ./
 COPY ./src ./src
@@ -28,7 +33,12 @@ FROM ${BASE_IMAGE_URI} AS dependencies
 WORKDIR /var/task
 
 COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
+# Private packages come from GitHub over ssh: the agent is mounted for this
+# step only, and GitHub's host key is trusted first. Without git and ssh (in
+# system_packages_build.txt) the key step is skipped and npm runs as before.
+RUN --mount=type=ssh (mkdir -p -m 0700 ~/.ssh \
+        && ssh-keyscan github.com >> ~/.ssh/known_hosts) 2> /dev/null || true; \
+    npm install --omit=dev
 
 ################################################################################################
 # Final stage - the runtime image, with its own entrypoint kept

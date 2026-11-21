@@ -6,4 +6,6 @@
 # the image that runs. One package per line; # comments and blank lines are
 # ignored. Runtime libraries go in system_packages.txt.
 
-# (none yet)
+# git and ssh: npm fetches private packages (git+ssh://, github:) with them.
+git
+openssh-client

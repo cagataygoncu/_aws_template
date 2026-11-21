@@ -15,5 +15,15 @@
     "gopls": {
         "ui.diagnostic.staticcheck": true
     },
-    "go.lintOnSave": "off"
+    "go.lintOnSave": "off",
+
+    // The private-module settings from mise.toml's [env], for the Go tools VS
+    // Code starts itself (gopls), which do not see mise unless VS Code was
+    // launched from a mise-activated shell.
+    "go.toolsEnvVars": {
+        "GOPRIVATE": "github.com/GIGTennis/*",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "url.git@github.com:GIGTennis/.insteadOf",
+        "GIT_CONFIG_VALUE_0": "https://github.com/GIGTennis/"
+    }
 }
