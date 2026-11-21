@@ -168,7 +168,7 @@ else:
 | Where | What |
 | --- | --- |
 | Secrets Manager, named by `AWS_SECRET_NAME` | credentials, API keys - nothing else |
-| `s3://<CONFIG_BUCKET>/<CONFIG_KEY>` (local copy `services/<basename of CONFIG_KEY>`) | every other setting, as JSON: profiles and blocks |
+| `s3://<CONFIG_BUCKET>/<CONFIG_KEY>` (local copy `services/<basename of CONFIG_KEY>`; the default key sits under the stack name, beside the environment file) | every other setting, as JSON: profiles and blocks |
 | `container_config.env` | `AWS_SECRET_NAME`, `CONFIG_BUCKET`, `CONFIG_KEY`, `CONFIG_BLOCK` |
 
 A secret has a size limit, and settings do not need one: keeping only

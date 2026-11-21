@@ -501,6 +501,13 @@ running image parses, there is one exposed gap, between steps 2 and 3:
 
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
+### Since v2.7.1
+
+| Change | Action in the project |
+|---|---|
+| The default `CONFIG_KEY` is `<stack name>/service_settings.json` - the project name with `-` for `_`, the prefix `container_config.env` already has in the config bucket - instead of the snake_case project name (seed: `container_config.env`) | optional, by hand: set `CONFIG_KEY=<stack name>/service_settings.json`, run `make sync-config`, then delete the old object, so both files sit under one prefix |
+| `{{STACK_NAME}}` placeholder in `make/bootstrap.sh` (template repo only) | nothing |
+
 ## When a project has drifted too far
 
 If a project has heavily edited its `targets/`, do not sync those at all —

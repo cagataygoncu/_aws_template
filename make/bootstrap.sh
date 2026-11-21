@@ -253,6 +253,7 @@ substitute_in_file() {
     # | as the sed delimiter: the image URIs contain slashes.
     sed \
         -e "s/{{PROJECT_NAME}}/$project_name/g" \
+        -e "s/{{STACK_NAME}}/${project_name//_/-}/g" \
         -e "s/{{LANGUAGE}}/$language/g" \
         -e "s|{{BASE_IMAGE_LAMBDA}}|$base_image_lambda|g" \
         -e "s|{{BASE_IMAGE_SERVICE}}|$base_image_service|g" \
@@ -284,7 +285,7 @@ substitute_in_file() {
 
 echo ">>> Substituting placeholders (project name, language, images, entrypoints)"
 while IFS= read -r -d '' file; do
-    if grep -qE '\{\{(PROJECT_NAME|LANGUAGE|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+|HEALTHCHECK_COMMAND|TEST_COMMAND|TEST_MASKS|DEPS_COMMAND)\}\}' "$file" 2>/dev/null; then
+    if grep -qE '\{\{(PROJECT_NAME|STACK_NAME|LANGUAGE|BASE_IMAGE_[A-Z]+|CONTAINER_[A-Z_]+|RUN_[A-Z_]+|LINT_[A-Z_]+|HEALTHCHECK_COMMAND|TEST_COMMAND|TEST_MASKS|DEPS_COMMAND)\}\}' "$file" 2>/dev/null; then
         substitute_in_file "$file"
     fi
 done < <(find "$destination_dir" -type f \
