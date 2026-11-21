@@ -4,7 +4,7 @@
 # logic as one function per command. Run `make help` for the full list, or
 # `./make/commands.sh <command> ...` directly when debugging.
 #
-#   make local-dev-setup               install mise.toml's tools (+ ./venv for python)
+#   make local-dev-setup               install mise.toml's tools (+ ./.venv for python)
 #   make template-version [version]     nested gig-cfn-templates release
 #   make info          [target]
 #   make lint                          source + cfn-lint over every template

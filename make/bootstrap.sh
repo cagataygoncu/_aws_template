@@ -131,6 +131,7 @@ rsync_excludes=(
     --exclude='.pytest_cache'
     --exclude='.hypothesis'
     --exclude='venv'
+    --exclude='.venv'
     --exclude='.git/'
     --exclude='node_modules'
     --exclude='.next'
@@ -168,7 +169,7 @@ if [[ -f "$destination_dir/gitignore" ]]; then
         cat "$destination_dir/gitignore"
         if [[ -f "$language_dir/gitignore" ]]; then
             echo
-            echo "# ---- $language ($language/gitignore in _aws_template) ----"
+            echo "# ---- $language ----"
             echo
             cat "$language_dir/gitignore"
         fi
@@ -291,37 +292,27 @@ fi
 versions sync > /dev/null
 
 # ---- stamp ----------------------------------------------------------------
-# .template.env records what this project was made from: the template commit
-# and the answers given here. That is all a later upgrade needs to repeat this
+# .template.env records what this project was made from: the template version
+# (a tag, or git describe output, which git resolves back to the commit) and
+# the answers given here. That is all a later upgrade needs to repeat this
 # exact render, then the render of a newer version, and merge the difference
 # into the project. The layer values are not copied in: they follow from the
 # commit. Tool versions are not answers either: they live in the project's
 # mise.toml, which the template owns, so an upgrade moves a project that kept
 # the old default to the new one, and keeps a version the project chose.
 #
-# A render from uncommitted template changes cannot be repeated, so it is
-# marked dirty and warned about.
+# A render from uncommitted template changes cannot be repeated: git describe
+# marks it -dirty, and an upgrade refuses such a stamp.
 
 template_version=unknown
-template_commit=unknown
-template_dirty=unknown
 if git -C "$template_dir" rev-parse --git-dir > /dev/null 2>&1; then
-    template_version=$(git -C "$template_dir" describe --tags --always)
-    template_commit=$(git -C "$template_dir" rev-parse HEAD)
-    if [[ -z "$(git -C "$template_dir" status --porcelain)" ]]; then
-        template_dirty=false
-    else
-        template_dirty=true
-    fi
+    template_version=$(git -C "$template_dir" describe --tags --always --dirty)
 fi
 
 {
-    echo "# Written by _aws_template's make/bootstrap.sh; rewritten by a template"
-    echo "# upgrade. Records the template version and answers this project was"
-    echo "# generated from. Do not edit by hand."
+    echo "# The template version this project was generated from, and the answers"
+    echo "# given. Rewritten by every template upgrade; do not edit by hand."
     printf 'TEMPLATE_VERSION=%q\n' "$template_version"
-    printf 'TEMPLATE_COMMIT=%q\n' "$template_commit"
-    printf 'TEMPLATE_DIRTY=%q\n' "$template_dirty"
     printf 'LANGUAGE=%q\n' "$language"
     printf 'PROJECT_NAME=%q\n' "$project_name"
 } > "$destination_dir/.template.env"
@@ -331,7 +322,7 @@ echo "Done. Project scaffolded at:"
 echo "    $destination_dir"
 echo
 echo "Template:  ${template_version}"
-if [[ "$template_dirty" != false ]]; then
+if [[ "$template_version" == unknown || "$template_version" == *-dirty ]]; then
     echo "    warning: the template had uncommitted changes (or is not a git"
     echo "    checkout), so .template.env cannot reproduce this render. Commit"
     echo "    the template first if this project is meant to be upgradable."

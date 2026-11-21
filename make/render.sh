@@ -60,14 +60,11 @@ git -C "$template_dir" archive "$commit" | tar -x -C "$archive_dir"
 run_bootstrap "$archive_dir/make/bootstrap.sh"
 
 # The archive is not a git checkout, so its bootstrap stamped "unknown" (or,
-# before stamps existed, nothing). The commit is known here.
+# before stamps existed, nothing). The version is known here.
 {
-    echo "# Written by _aws_template's make/bootstrap.sh; rewritten by a template"
-    echo "# upgrade. Records the template version and answers this project was"
-    echo "# generated from. Do not edit by hand."
+    echo "# The template version this project was generated from, and the answers"
+    echo "# given. Rewritten by every template upgrade; do not edit by hand."
     printf 'TEMPLATE_VERSION=%q\n' "$version"
-    printf 'TEMPLATE_COMMIT=%q\n' "$commit"
-    printf 'TEMPLATE_DIRTY=%q\n' false
     printf 'LANGUAGE=%q\n' "$language"
     printf 'PROJECT_NAME=%q\n' "$project_name"
 } > "$destination/.template.env"

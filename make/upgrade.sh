@@ -111,20 +111,33 @@ run() {
     [[ -f "$stamp" ]] || die "Error: $project has no .template.env.
   Find the version it was made from first: make upgrade-guess $project"
 
-    local language project_name old_commit dirty stamp_lv stamp_otp
+    local language project_name stamp_version old_commit dirty stamp_lv stamp_otp
     language=$(stamp_value "$stamp" LANGUAGE)
     project_name=$(stamp_value "$stamp" PROJECT_NAME)
+    # TEMPLATE_VERSION is a tag or git describe output, which git resolves
+    # back to the commit; -dirty marks a render from uncommitted changes.
+    # Stamps before v2.4.0 also carried TEMPLATE_COMMIT and TEMPLATE_DIRTY.
+    stamp_version=$(stamp_value "$stamp" TEMPLATE_VERSION)
     old_commit=$(stamp_value "$stamp" TEMPLATE_COMMIT)
     dirty=$(stamp_value "$stamp" TEMPLATE_DIRTY)
+    if [[ "$stamp_version" == *-dirty ]]; then
+        dirty=true
+        stamp_version=${stamp_version%-dirty}
+    fi
+    if [[ -z "$old_commit" && -n "$stamp_version" && "$stamp_version" != unknown ]]; then
+        old_commit=$(git -C "$template_dir" rev-parse --verify --quiet "${stamp_version}^{commit}") \
+            || die "Error: $stamp names version $stamp_version, which is not in this template's history"
+    fi
     # Stamps from before versions moved to mise.toml recorded them; both
     # renders get them, so a project's chosen toolchain is not reset.
     stamp_lv=$(stamp_value "$stamp" LANGUAGE_VERSION)
     stamp_otp=$(stamp_value "$stamp" OTP_VERSION)
 
     [[ -n "$language" && -n "$project_name" && -n "$old_commit" ]] \
-        || die "Error: $stamp lacks LANGUAGE, PROJECT_NAME or TEMPLATE_COMMIT"
+        || die "Error: $stamp lacks LANGUAGE, PROJECT_NAME or a TEMPLATE_VERSION this template knows
+  Find the version it was made from: make upgrade-guess $project WRITE=1"
     [[ "$old_commit" != unknown ]] \
-        || die "Error: $stamp names no commit - run: make upgrade-guess $project WRITE=1"
+        || die "Error: $stamp names no version - run: make upgrade-guess $project WRITE=1"
     if [[ "$dirty" == true && -z "${FORCE:-}" ]]; then
         die "Error: $project was rendered from uncommitted template changes, so
   its old render cannot be repeated and the merge would be guesswork.

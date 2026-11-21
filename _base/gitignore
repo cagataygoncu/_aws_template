@@ -1,9 +1,10 @@
-# Shared by every project: _aws_template's _base/gitignore. The language's own
-# entries follow below. Edit freely - a template upgrade merges its changes in.
+# Shared by every project made from the template; the language's own entries
+# follow below. Edit freely - a template upgrade merges its changes in.
 
-# The python venv `make local-dev-setup` fills (mise creates it).
+# The python venv `make local-dev-setup` fills (mise creates it), and venv/,
+# where micromamba kept the toolchain before mise replaced it.
+/.venv/
 /venv/
-/venv-*/
 
 # OS and editor files.
 .DS_Store

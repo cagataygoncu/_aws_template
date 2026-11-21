@@ -45,7 +45,7 @@ MARKER_ERE='^[[:space:]]*(#|//)[[:space:]]*mise-sync: '
 
 # Folders never scanned for mise-sync lines: environments, dependencies and
 # build output, none of which belong to the project's own sources.
-SKIP_DIRS=(.git venv node_modules build dist _build deps .next .elixir_ls vendor)
+SKIP_DIRS=(.git .venv venv node_modules build dist _build deps .next .elixir_ls vendor)
 
 die() {
     echo "$*" >&2

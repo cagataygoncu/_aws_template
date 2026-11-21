@@ -20,7 +20,8 @@ project up to date.
    conflicts.
 3. Fill the `{{PLACEHOLDERS}}` from `<language>/layer.env`, then write every
    version line from `mise.toml`.
-4. Write `.template.env`, the stamp: the template commit and the answers given.
+4. Write `.template.env`, the stamp: `TEMPLATE_VERSION` (the tag, or `git describe`
+   output), `LANGUAGE` and `PROJECT_NAME`. Projects never name this repository.
 
 ## Layout
 
@@ -104,7 +105,9 @@ A generated project has its own `make help`. The commands you use most:
   template files, such as nextjs's `.env.local`, from this repo's git. The
   root `.gitignore` alone decides what the template tracks.
 - **Commit before `make new`.** A render from uncommitted changes is stamped
-  `TEMPLATE_DIRTY=true` and cannot be repeated for an upgrade.
+  with a `-dirty` version (`v2.4.0-dirty`) and cannot be repeated for an upgrade.
+- **Python's venv is `.venv`**, created by mise. `venv/` was micromamba's,
+  before v2.0.0.
 - **The `gig-cfn-templates` release** is set in each target's
   `deployment_parameters.json` (`TemplateVersion`), never in
   `cicd_parameters.json`.

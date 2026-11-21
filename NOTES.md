@@ -728,12 +728,15 @@ Two things keep the commands honest:
 ## Upgrading a project that already exists
 
 Generated projects are copies, so template changes do not flow to them on their
-own. Each one carries `.template.env`, written by `bootstrap.sh`: the template
-commit it came from and the answers given (language, name), enough to repeat
-that exact render later. Tool versions are not answers: they live in the
-project's `mise.toml`. A render from uncommitted template
-changes is marked `TEMPLATE_DIRTY=true` and cannot be repeated, so commit
-before `make new`. `template_manifest.txt` says who owns each generated file.
+own. Each one carries `.template.env`, written by `bootstrap.sh`:
+`TEMPLATE_VERSION` (a tag, or `git describe` output such as `v2.3.1-2-gabc1234`,
+which git resolves back to the commit) and the answers given (`LANGUAGE`,
+`PROJECT_NAME`), enough to repeat that exact render later. Tool versions are
+not answers: they live in the project's `mise.toml`. A render from
+uncommitted template changes gets a `-dirty` version and cannot be repeated,
+so commit before `make new`. Stamps before v2.4.0 also carried
+`TEMPLATE_COMMIT` and `TEMPLATE_DIRTY`; `make upgrade` still reads them.
+Nothing a project receives names this repository. `template_manifest.txt` says who owns each generated file.
 
 `make upgrade <project_dir> [ref]` (`make/upgrade.sh run`) does the upgrade.
 The ref defaults to the latest tag:
@@ -760,7 +763,7 @@ The ref defaults to the latest tag:
 4. It runs `versions.sh sync` and rewrites `.template.env` for the new
    commit.
 
-It refuses to run on a dirty project, a `TEMPLATE_DIRTY=true` stamp, or a
+It refuses to run on a dirty project, a `-dirty` stamp, or a
 downgrade; `FORCE=1` overrides the last two. It works on a new branch,
 `template-upgrade/<version>` (`NO_BRANCH=1` to stay put), and commits
 nothing. The report and `seed.patch` go to

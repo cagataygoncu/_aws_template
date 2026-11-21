@@ -6,9 +6,9 @@ how to run, test and debug. Reasons and details: [NOTES.md](../NOTES.md). Tool v
 ## Tools
 
 `mise.toml` installs python, uv, cfn-lint and ruff. `make local-dev-setup`
-creates `./venv` and installs `requirements.txt` (runtime) and
+creates `./.venv` and installs `requirements.txt` (runtime) and
 `.devcontainer/requirements_dev.txt` (pytest, ruff, debugpy and the rest).
-With mise activated, `./venv` is active inside the project.
+With mise activated, `./.venv` is active inside the project.
 
 ## Run
 
@@ -43,4 +43,4 @@ Breakpoints work on the Mac and in the devcontainer.
 
 The dev image is the official python image. `post_create.sh` installs
 `requirements_dev.txt` into the container's python, so the container needs
-no `./venv`. A volume hides the Mac's `./venv`, which cannot run on Linux.
+no `./.venv`. A volume hides the Mac's `./.venv`, which cannot run on Linux.

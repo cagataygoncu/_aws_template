@@ -5,7 +5,7 @@
 # mise.toml lists everything this project builds and develops with: the
 # language (python, go, node, elixir and erlang), and the command-line tools
 # `make lint` and the editor use (cfn-lint, gopls, cmake, ...). This installs
-# all of it with `mise install`. For a python project it also fills ./venv,
+# all of it with `mise install`. For a python project it also fills ./.venv,
 # which mise creates, from requirements.txt and
 # .devcontainer/requirements_dev.txt.
 #
@@ -55,13 +55,13 @@ mise trust --quiet mise.toml
 echo "Installing the tools in mise.toml..."
 mise install
 
-# A python project: ./venv is mise's (the _.python.venv entry in mise.toml),
+# A python project: ./.venv is mise's (the _.python.venv entry in mise.toml),
 # created the first time the environment is loaded. Fill it.
 requirements=()
 [[ -f requirements.txt ]] && requirements+=(-r requirements.txt)
 [[ -f .devcontainer/requirements_dev.txt ]] && requirements+=(-r .devcontainer/requirements_dev.txt)
 if (( ${#requirements[@]} )); then
-    echo "Installing python packages into ./venv..."
+    echo "Installing python packages into ./.venv..."
     mise exec -- python -m pip install --quiet --upgrade pip
     mise exec -- python -m pip install "${requirements[@]}"
 fi
@@ -71,4 +71,4 @@ echo "Done. Installed:"
 mise ls --current --local 2> /dev/null | sed 's/^/  /' || true
 echo
 echo "With mise activated in your shell, these are on PATH in this directory"
-echo "(and ./venv is active, for python). Without it: mise exec -- <command>."
+echo "(and ./.venv is active, for python). Without it: mise exec -- <command>."

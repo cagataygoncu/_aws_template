@@ -229,7 +229,7 @@ make local-dev-setup
 ```
 
 This installs the tools in `mise.toml` with `mise install`. For python it
-also fills `./venv`. With mise activated, the tools are on `PATH` inside the
+also fills `./.venv`. With mise activated, the tools are on `PATH` inside the
 project. `make` commands find them even without activation.
 
 Put `mise activate` after any other environment manager in `~/.zshrc`.

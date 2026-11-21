@@ -20,11 +20,11 @@ python = "3.12"
 # versions here (or `mise upgrade --bump`) and commit.
 uv = "0.13.9"
 "pipx:cfn-lint" = "1.60.1"
-# Also installed into ./venv (requirements_dev.txt syncs its pin from here).
+# Also installed into ./.venv (requirements_dev.txt syncs its pin from here).
 ruff = "0.17.5"
 
 [env]
-# ./venv, created on first use. `make local-dev-setup` installs
+# ./.venv, created on first use. `make local-dev-setup` installs
 # requirements.txt and .devcontainer/requirements_dev.txt into it.
 # --seed puts pip in it: mise makes the venv with uv, whose venvs have none.
-_.python.venv = { path = "venv", create = true, uv_create_args = ["--seed"] }
+_.python.venv = { path = ".venv", create = true, uv_create_args = ["--seed"] }

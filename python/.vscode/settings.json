@@ -1,16 +1,16 @@
 {
     // No python.defaultInterpreterPath here on purpose. Workspace settings win
-    // over the devcontainer's, so pinning ./venv would follow you into the
+    // over the devcontainer's, so pinning ./.venv would follow you into the
     // container, where that path does not exist - which is what leaves the
     // Python extension (and Black) with no interpreter. Instead:
     //
-    //   on the host       the extension discovers ./venv by itself
+    //   on the host       the extension discovers ./.venv by itself
     //   in a container    devcontainer.json sets the image's interpreter
     //
-    // mise-sync: "python.autoComplete.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python${mise:python}/site-packages"],
-    "python.autoComplete.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python${mise:python}/site-packages"],
-    // mise-sync: "python.analysis.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python${mise:python}/site-packages"],
-    "python.analysis.extraPaths": ["${workspaceFolder}/venv/lib", "${workspaceFolder}/venv/lib/python${mise:python}/site-packages"],
+    // mise-sync: "python.autoComplete.extraPaths": ["${workspaceFolder}/.venv/lib", "${workspaceFolder}/.venv/lib/python${mise:python}/site-packages"],
+    "python.autoComplete.extraPaths": ["${workspaceFolder}/.venv/lib", "${workspaceFolder}/.venv/lib/python${mise:python}/site-packages"],
+    // mise-sync: "python.analysis.extraPaths": ["${workspaceFolder}/.venv/lib", "${workspaceFolder}/.venv/lib/python${mise:python}/site-packages"],
+    "python.analysis.extraPaths": ["${workspaceFolder}/.venv/lib", "${workspaceFolder}/.venv/lib/python${mise:python}/site-packages"],
     "files.exclude": {
         "**/*.pyc": {
             "when": "$(basename).py"
@@ -19,6 +19,6 @@
         "**/*.egg-info": true,
         "**/*.pytest_cache": true,
         "**/*.hypothesis": true,
-        "venv": true
+        ".venv": true
     }
 }

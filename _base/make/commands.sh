@@ -55,7 +55,7 @@ if [[ -f "$PROJECT_CONFIG" ]]; then
     done < "$PROJECT_CONFIG"
 fi
 
-# The project's tools - cfn-lint, ruff, gopls, ./venv - come from mise.toml.
+# The project's tools - cfn-lint, ruff, gopls, ./.venv - come from mise.toml.
 # Load that environment here, so every command finds them whether or not mise
 # is activated in the calling shell. Quiet and optional: without mise, or
 # before `make local-dev-setup` has trusted mise.toml, commands fall back to
@@ -64,7 +64,7 @@ if [[ -f mise.toml ]] && command -v mise > /dev/null 2>&1; then
     eval "$(mise env --shell bash 2> /dev/null)" || true
     # mise keeps PATH entries added after `mise activate` ahead of its own, so
     # an older cfn-lint from another environment (a micromamba base, say)
-    # would shadow the pinned one. Put this project's tools first: ./venv,
+    # would shadow the pinned one. Put this project's tools first: ./.venv,
     # then the folders of the tools mise.toml pins.
     mise_paths=$(mise bin-paths 2> /dev/null | paste -sd: - || true)
     [[ -n "$mise_paths" ]] && PATH="$mise_paths:$PATH"
@@ -2034,7 +2034,7 @@ set_nested_version() {
 # local development environment
 # ---------------------------------------------------------------------------
 
-# Install mise.toml's tools with mise, and fill ./venv for python - the
+# Install mise.toml's tools with mise, and fill ./.venv for python - the
 # toolchain this project builds and tests with. Kept as its own script rather
 # than a function here, because it is what a fresh clone runs before anything
 # else and is often run on its own.
@@ -2304,7 +2304,7 @@ usage: ./make/commands.sh <command> [arguments]
 
 project
   local-dev-setup                             install mise.toml's tools (mise install),
-                                              and ./venv's packages for python
+                                              and ./.venv's packages for python
                                               (synced from mise.toml first)
   versions                                    tool versions in mise.toml, and
                                               the base image each target builds on
