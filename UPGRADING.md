@@ -406,6 +406,17 @@ pipeline's test stage below.
 | `.gitignore` ignores `/reports/`, the JUnit output (template) | nothing |
 | cpp: the F5 configuration ran `build/cpp_sample`, which CMake never builds; it now builds, then debugs `build/main` (template: `.vscode/launch.json`) | nothing |
 | typescript: `make test` runs `npm install`, which writes `package-lock.json` if the project has none | commit the lock file |
+
+### Since v2.3.0
+
+Every language. Run `make upgrade <project> v2.3.0`.
+
+| Change | Action in the project |
+|---|---|
+| **`make deploy-cicd` checks existing stacks first** (template: `make/commands.sh`): it lists the pipeline and service stacks that exist, flags a pipeline that deploys another target, stops on a stack mid-operation or a pipeline in `ROLLBACK_COMPLETE`, and asks `(y/n)` in a terminal | nothing. Answer `n` if a listed stack is not this project's, and fix `PROJECT_NAME` |
+| **`README.md` is numbered steps only** (template); its explanations move to a new **`NOTES.md`** (template) | nothing if the project never edited its README. If it did, the merge conflicts heavily: keep the new README, and move the project's own notes into `NOTES.md` |
+| **`docs/development.md` and its four diagram files are retired**: their text is in `NOTES.md`, and diagrams no longer ship with projects | nothing: `make upgrade` deletes untouched copies |
+| `docs/language.md` links `README.md` and `NOTES.md` (template) | nothing |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
