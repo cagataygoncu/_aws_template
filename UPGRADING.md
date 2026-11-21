@@ -445,6 +445,19 @@ Every language. Run `make upgrade <project> v2.4.1`; nothing needs doing by hand
 | **The language's notes are a section of `NOTES.md`** (template), after **Development**. `docs/language.md` is retired | nothing: `make upgrade` merges `NOTES.md` and deletes an untouched `docs/language.md` |
 | `README.md` points to `NOTES.md` for the language's commands (template) | nothing |
 | The upgrade report says "updated - the project had not changed it" for an untouched `mise.toml` | nothing: template maintainers only |
+
+### Since v2.5.0
+
+Every language. Run `make upgrade <project> v2.5.0`, then `make local-dev-setup`.
+
+| Change | Action in the project |
+|---|---|
+| **`make local-dev-setup` installs the dependencies in every language** (template: `make/setup_local_dev_env.sh`): pip into `./.venv`, `go mod download`, `npm install`, `mix deps.get`. It runs them with `./.venv` and the pinned tools first on `PATH`, and refuses if `python` is not `./.venv`'s | run `make local-dev-setup` once. Load your GitHub key first: `ssh-add ~/.ssh/<key>` |
+| **Private packages** (`github.com/GIGTennis/...`): before installing, it logs in to GitHub over ssh whenever a dependency file names a private repository, and stops with GitHub's message if the key is refused. `NOTES.md` (template) has a **Private packages** section with the form for each language | nothing |
+| go: `mise.toml` sets `GOPRIVATE` and a project-scoped git rewrite to ssh; `.vscode/settings.json` passes them to gopls (template) | nothing |
+| typescript, nextjs: each `npm` step in the Dockerfiles mounts the ssh agent (template) | by hand: add `git` and `openssh-client` to `system_packages_build.txt` (seed) - `seed.patch` has the lines. Without them, private npm packages cannot be fetched in the image |
+| typescript: `make test` installs `git` in its image when `package.json` uses git dependencies (template) | nothing |
+
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
