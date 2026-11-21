@@ -310,8 +310,7 @@ if git -C "$template_dir" rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 {
-    echo "# The template version this project was generated from, and the answers"
-    echo "# given. Rewritten by every template upgrade; do not edit by hand."
+    echo "# The template version of this project. Do not edit by hand."
     printf 'TEMPLATE_VERSION=%q\n' "$template_version"
     printf 'LANGUAGE=%q\n' "$language"
     printf 'PROJECT_NAME=%q\n' "$project_name"

@@ -62,8 +62,7 @@ run_bootstrap "$archive_dir/make/bootstrap.sh"
 # The archive is not a git checkout, so its bootstrap stamped "unknown" (or,
 # before stamps existed, nothing). The version is known here.
 {
-    echo "# The template version this project was generated from, and the answers"
-    echo "# given. Rewritten by every template upgrade; do not edit by hand."
+    echo "# The template version of this project. Do not edit by hand."
     printf 'TEMPLATE_VERSION=%q\n' "$version"
     printf 'LANGUAGE=%q\n' "$language"
     printf 'PROJECT_NAME=%q\n' "$project_name"
