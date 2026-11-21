@@ -27,10 +27,14 @@ target_link_libraries(main PRIVATE OpenSSL::Crypto)
 # The unit tests: `ctest --test-dir build`, and make test, which writes a JUnit
 # report with --output-junit. They run from the project root, where
 # container_config.env and services/ are.
-enable_testing()
-add_executable(config_test ./tests/unit/config_test.cpp ./src/config.cpp)
-target_link_libraries(config_test PRIVATE nlohmann_json::nlohmann_json)
-add_test(NAME config_test COMMAND config_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+# The images build with -DBUILD_TESTS=OFF: their build context has no tests/.
+option(BUILD_TESTS "Build the unit tests" ON)
+if(BUILD_TESTS)
+    enable_testing()
+    add_executable(config_test ./tests/unit/config_test.cpp ./src/config.cpp)
+    target_link_libraries(config_test PRIVATE nlohmann_json::nlohmann_json)
+    add_test(NAME config_test COMMAND config_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
 
 # Add what this service actually needs beside it, for example:
 #

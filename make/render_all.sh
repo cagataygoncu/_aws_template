@@ -126,6 +126,9 @@ check_lint() {
         echo "skipped (needs mix deps.get)"
         return
     fi
+    # A render is a throwaway project: trust its mise.toml, or a mise shim for
+    # the linter refuses to run.
+    command -v mise > /dev/null && mise trust --quiet mise.toml > /dev/null 2>&1
     ./make/commands.sh lint > /dev/null 2>&1 && echo ok || echo FAIL
 }
 

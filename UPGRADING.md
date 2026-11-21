@@ -470,6 +470,35 @@ Every language. Run `make upgrade <project> v2.6.0`.
 | The build no longer passes `--build-arg GITHUB_TOKEN`: build arguments are stored in the image history. The token is a BuildKit secret now | nothing |
 | Devcontainers pass `GITHUB_TOKEN` in through `remoteEnv` (template) | nothing |
 
+### Since v2.7.0
+
+**Breaking.** Configuration is one secret (credentials and API keys only), one
+config object in S3 (every other setting), and one block of it. Every
+language. Run `make upgrade <project> v2.7.0`, then port the seed changes
+and move the secret in the order below.
+
+| Change | Action in the project |
+|---|---|
+| **`SECRET_NAME` is now `AWS_SECRET_NAME`** | by hand: rename it in `container_config.env` and in `targets/lambda/deployment_parameters.json` (both seed), then `make sync-config` |
+| **The loader** (template): `src/config.py`, `src/app/config.go`, `src/config.ts`, `config.mjs` (nextjs), `lib/config.ex`, `src/config.cpp`/`.hpp`. Same rules in every language: secret = `credentials` + `api_keys` by id; S3 object with `_README`, `profiles` and blocks; `CONFIG_BLOCK` picks the block, which inherits its `PROFILE`; `*_CREDENTIAL` settings name credential ids; read once at startup; `MODE=local` reads `services/<basename of CONFIG_KEY>` | nothing: `make upgrade` adds them. See `NOTES.md`, **Configuration** |
+| The starter code calls the loader instead of reading the whole secret (seed: `src/main.py`, `src/app/app.go`, `src/main.ts`, `server.mjs` and `src/lib/main.ts`, `lib/app.ex`, `src/main.cpp`) | by hand: in the project's own code, replace the secret read with the loader - `seed.patch` shows the template's version |
+| Dependencies (seed): go `aws-sdk-go-v2` S3 and config; typescript and nextjs `@aws-sdk/client-s3`; elixir `ex_aws`, `ex_aws_s3`, `hackney`, `jason`, `sweet_xml`; cpp `nlohmann/json` through CMake `FetchContent` | by hand: port them from `seed.patch` (`go mod tidy`, `npm install`, `mix deps.get`) |
+| **`services/service_settings.json`** (seed): a starter config object, and `CONFIG_BUCKET`, `CONFIG_KEY`, `CONFIG_BLOCK` in `container_config.env` | by hand: add the three variables to `container_config.env`; move the settings out of the secret into `services/<basename of CONFIG_KEY>` |
+| Unit tests resolve the shipped block in every language (seed: `tests/unit/`, elixir `test/`); nextjs gains tests; cpp builds them with `ctest` (seed `CMakeLists.txt`) and gains `.clang-format` (template) | by hand: port the tests and, for cpp, the `CMakeLists.txt` changes |
+| `make lint` runs `LINT_COMMAND` at lint time (single-quoted in `make/commands.sh`, template): cpp's `$(find ...)` used to run when the script loaded, so cpp lint never worked | nothing |
+
+Moving a live service's secret, in this order - like any change of what the
+running image parses, there is one exposed gap, between steps 2 and 3:
+
+1. add `CONFIG_BUCKET`, `CONFIG_KEY` and `CONFIG_BLOCK` to
+   `container_config.env`, write `services/<basename of CONFIG_KEY>`, then
+   `make sync-config`. The running image reads neither.
+2. reshape the secret: `credentials` and `api_keys` by id, keeping the old
+   settings in it for now. A process that restarts now cannot parse the old
+   shape, so go straight on.
+3. push, so the pipeline ships the new image.
+4. delete the old settings from the secret.
+
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far

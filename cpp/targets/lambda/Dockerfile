@@ -50,7 +50,7 @@ WORKDIR /app
 COPY make/github_env.sh /tmp/github_env.sh
 RUN --mount=type=ssh --mount=type=secret,id=github_token,required=false \
     export GITHUB_TOKEN="$(cat /run/secrets/github_token 2> /dev/null)" && . /tmp/github_env.sh && \
-    cmake -S . -B build -G Ninja \
+    cmake -S . -B build -G Ninja -DBUILD_TESTS=OFF \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/opt \
     && cmake --build build --parallel \
