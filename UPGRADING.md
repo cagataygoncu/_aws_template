@@ -425,6 +425,16 @@ Projects receive nothing. Template maintainers only.
 | Change | Action in the project |
 |---|---|
 | `make upgrade-guess` failed with "Argument list too long" on a project with a local `venv/`: it listed every file on disk. It now uses `git ls-files`, and classifies paths in `xargs` batches | nothing |
+
+### Since v2.4.0
+
+Every language. Run `make upgrade <project> v2.4.0`.
+
+| Change | Action in the project |
+|---|---|
+| **`.template.env` holds only `TEMPLATE_VERSION`, `LANGUAGE` and `PROJECT_NAME`** (stamp). `TEMPLATE_VERSION` is a tag or `git describe` output; `-dirty` marks a render from uncommitted changes. `TEMPLATE_COMMIT` and `TEMPLATE_DIRTY` are gone | nothing: `make upgrade` rewrites the stamp, and still reads the old form |
+| **Nothing a project receives names the template repository**: the stamp header and the `.gitignore` comments are neutral | nothing. Commit messages are the project's: say "the template" and the version |
+| **python: the venv is `.venv/`**, not `venv/` (template: `mise.toml`, `.vscode/settings.json`, the devcontainer volume, `make test`) | run `make local-dev-setup`: mise creates `.venv`. Then delete the old `venv/` (micromamba's, before v2.0.0); `.gitignore` ignores both |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
