@@ -62,6 +62,22 @@ list_files() {
     (cd "$1" && find . -type f -not -path './.git/*' | sed 's|^\./||' | sort)
 }
 
+# The files of a project: those git tracks when it is a git checkout, so an
+# untracked venv/, node_modules/ or cache never counts as project content.
+project_files() {
+    if git -C "$1" rev-parse --git-dir > /dev/null 2>&1; then
+        git -C "$1" ls-files | sort
+    else
+        list_files "$1"
+    fi
+}
+
+# Classify the paths listed in a file. xargs batches them, so no project is
+# too large for one command line; MANIFEST_FILE, if set, passes through.
+classify_paths() {
+    xargs "$script_dir/manifest.sh" classify < "$1"
+}
+
 is_text() {
     LC_ALL=C grep -Iq . "$1" 2> /dev/null || [[ ! -s "$1" ]]
 }
@@ -161,10 +177,7 @@ run() {
     : > "$report_dir/seed.patch"
 
     { list_files "$work/old"; list_files "$work/new"; } | sort -u > "$work/paths"
-    # One classify call for every path: each call re-reads the manifest.
-    # shellcheck disable=SC2046 - paths contain no spaces.
-    MANIFEST_FILE="$work/manifest.txt" "$script_dir/manifest.sh" classify $(cat "$work/paths") \
-        > "$work/classes"
+    MANIFEST_FILE="$work/manifest.txt" classify_paths "$work/paths" > "$work/classes"
 
     local class path o n p ho hn hp
     local updated=0 merged=0 added=0 removed=0 conflicts=0 seeds=0
@@ -408,9 +421,8 @@ guess() {
 
     echo "ranking the last $limit template commits against $project ($language, $project_name)"
     local project_classes
-    list_files "$project" | grep -v '^vault_doc/' > "$work/project_paths" || true
-    # shellcheck disable=SC2046 - paths contain no spaces.
-    project_classes=$("$script_dir/manifest.sh" classify $(cat "$work/project_paths"))
+    project_files "$project" | grep -v '^vault_doc/' > "$work/project_paths" || true
+    project_classes=$(classify_paths "$work/project_paths")
     local commit path score files r classes
     : > "$work/scores"
     for commit in $(git -C "$template_dir" rev-list --first-parent --max-count="$limit" HEAD); do
@@ -421,8 +433,7 @@ guess() {
         # Score only template-owned files: seed files are the project's own,
         # and differ whatever version made them.
         list_files "$r" > "$work/paths"
-        # shellcheck disable=SC2046 - paths contain no spaces.
-        classes=$("$script_dir/manifest.sh" classify $(cat "$work/paths"))
+        classes=$(classify_paths "$work/paths")
         score=0
         files=0
         while read -r class path; do

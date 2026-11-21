@@ -417,6 +417,14 @@ Every language. Run `make upgrade <project> v2.3.0`.
 | **`README.md` is numbered steps only** (template); its explanations move to a new **`NOTES.md`** (template) | nothing if the project never edited its README. If it did, the merge conflicts heavily: keep the new README, and move the project's own notes into `NOTES.md` |
 | **`docs/development.md` and its four diagram files are retired**: their text is in `NOTES.md`, and diagrams no longer ship with projects | nothing: `make upgrade` deletes untouched copies |
 | `docs/language.md` links `README.md` and `NOTES.md` (template) | nothing |
+
+### Since v2.3.1
+
+Projects receive nothing. Template maintainers only.
+
+| Change | Action in the project |
+|---|---|
+| `make upgrade-guess` failed with "Argument list too long" on a project with a local `venv/`: it listed every file on disk. It now uses `git ls-files`, and classifies paths in `xargs` batches | nothing |
 | The per-language values moved from the `case` block in `make/bootstrap.sh` into `<language>/layer.env`; the rendered output is byte-identical | nothing to do |
 
 ## When a project has drifted too far
