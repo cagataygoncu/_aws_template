@@ -125,30 +125,38 @@ _aws_template/
 │   │   ├── lambda/         # deployment.yaml, cicd_parameters.json
 │   │   └── service/        # task/ (no ALB), server/ (ALB + domain)
 │   ├── .dockerignore
-│   └── container_config.env                # the env file to upload to S3
+│   ├── container_config.env                # the env file to upload to S3: names the
+│   │                                       #   secret, config object and block
+│   └── services/service_settings.json      # the config object's local copy (seed)
 │
 ├── python/             # Python language layer
 │   ├── layer.env                             # placeholder values (every layer has one;
 │   │                                         #   never shipped, like LAYER.md)
 │   ├── src/, lib/, tests/unit/, .vscode/
+│   ├── src/config.py                         # the config loader (every layer has one)
 │   ├── requirements.txt                      # runtime deps: images AND devcontainer
 │   ├── .devcontainer/                        # VS Code: Reopen in Container
 │   └── targets/{lambda,service}/Dockerfile   # Python multi-stage (pip)
 ├── golang/             # Go language layer
 │   ├── src/, tests/unit/, go.mod, go.sum, .devcontainer/, .vscode/
+│   ├── src/app/config.go                     # the config loader
 │   └── targets/{lambda,service}/Dockerfile   # multi-stage `go build`
 ├── typescript/         # Node + TypeScript layer — a service, not a web app
 │   ├── src/, lib/, tests/unit/, package.json, tsconfig.json, .devcontainer/, .vscode/
 │   ├── eslint.config.mjs                     # flat config, typescript-eslint
+│   ├── src/config.ts                         # the config loader
 │   └── targets/{lambda,service}/Dockerfile   # tsc to build/, then run node
 ├── cpp/                # C++ language layer
-│   ├── src/, CMakeLists.txt, .gdbinit, .devcontainer/, .vscode/
+│   ├── src/, tests/unit/, CMakeLists.txt, .gdbinit, .clang-format, .devcontainer/, .vscode/
+│   ├── src/config.{cpp,hpp}                  # the config loader (local mode only)
 │   └── targets/{lambda,service}/Dockerfile   # CMake build + provided.al2 for lambda
 ├── nextjs/             # Next.js language layer (TS, Tailwind) — no lambda target
-│   ├── src/, package.json, tsconfig.json, next.config.mjs, .devcontainer/, .vscode/
+│   ├── src/, tests/unit/, package.json, tsconfig.json, next.config.mjs, .devcontainer/, .vscode/
+│   ├── server.mjs, config.mjs                # config loader; settings and API keys -> process.env
 │   └── targets/service/Dockerfile            # npm ci + Next build
 ├── elixir/             # Elixir Mix project layer
 │   ├── lib/, test/, mix.exs, mix.lock, .devcontainer/, .vscode/
+│   ├── lib/config.ex                         # the config loader (ex_aws)
 │   └── targets/{lambda,service}/Dockerfile   # mix release multi-stage
 │
 ├── make/
@@ -579,7 +587,8 @@ container where it does not exist, leaving the Python extension and Black with
 no interpreter at all. On the host the extension finds `./venv` on its own.
 
 The configurations set `MODE=local`, the same thing the Makefile's `RUN_ENV`
-default does for `make local-run`, so a debug session skips the Secrets Manager read.
+default does for `make local-run`, so a debug session reads the local config
+object (`services/`) and skips S3 and Secrets Manager.
 The Python configurations also set `PYTHONPATH` to the
 workspace, matching `ENV PYTHONPATH=/` in the images, and the server binds the
 language's own port — the one `devcontainer.json` forwards.
