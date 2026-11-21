@@ -26,9 +26,20 @@ stamp     .template.env
 # check plumbing the container images run, not application logic.
 template  src/healthcheck.py
 template  server.mjs
+# The configuration loaders: the same rules in every language, so a fix to
+# one reaches every project.
+template  src/config.py
+template  src/app/config.go
+template  src/config.ts
+template  config.mjs
+template  lib/config.ex
+template  src/config.cpp
+template  src/config.hpp
 
 # Project configuration and deployment values.
 seed      project.env
+# The config object (services/<basename of CONFIG_KEY>): the project's settings.
+seed      services/*
 seed      container_config.env
 seed      .env.local
 seed      targets/*/deployment.yaml
@@ -81,6 +92,7 @@ template  postcss.config.mjs
 template  .formatter.exs
 template  .iex.exs
 template  .gdbinit
+template  .clang-format
 
 # Retired: files the template used to ship. Kept so an upgrade removes them.
 retired   environment.yaml

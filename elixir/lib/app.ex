@@ -39,15 +39,15 @@ defmodule App do
   def process_request(event_data, mode \\ nil) do
     mode = mode || get_mode()
 
-    if mode == :online do
-      # Where the AWS lookups belong: anything that must not sit in the
-      # environment file - endpoints, credentials, keys - comes from Secrets
-      # Manager, read with the task role. The Python and Go layers do this
-      # through gig_utils; this one has no AWS client as a dependency yet, so
-      # add one here when the service needs it. Log that a secret was read,
-      # never what it contained.
-      Logger.info("online - add the Secrets Manager read here")
-    end
+    # The settings: the block of the config object container_config.env
+    # names, with credentials from the secret (App.Config). Read once, then
+    # kept. Log what was read, never a credential or key.
+    config = App.Config.get!(mode == :local)
+
+    Logger.info(
+      "block #{config.block}: #{map_size(config.settings)} settings, " <>
+        "#{map_size(config.credentials)} credentials"
+    )
 
     input = %{event_data: event_data}
     Logger.info("input: #{inspect(input)}")

@@ -2,32 +2,23 @@ import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
 
-// Load secrets from AWS Secrets Manager before starting the app
-const secretName = process.env.SECRET_NAME;
-if (secretName) {
+import { applyToEnv, loadConfig } from "./config.mjs";
+
+// The configuration (config.mjs): the block of the config object
+// container_config.env names, and the secret's API keys - put into process.env
+// once, before Next starts, so Next and NextAuth read them there. Not for a
+// health probe: that only asks the running server, so it reads nothing.
+if (!process.argv.includes("--healthcheck")) {
     try {
-        const { SecretsManagerClient, GetSecretValueCommand } = await import(
-            "@aws-sdk/client-secrets-manager"
-        );
-        const client = new SecretsManagerClient({
-            region: process.env.AWS_REGION || "ap-southeast-2",
-        });
-        const { SecretString } = await client.send(
-            new GetSecretValueCommand({ SecretId: secretName })
-        );
-        const secrets = JSON.parse(SecretString);
-        let count = 0;
-        for (const [key, value] of Object.entries(secrets)) {
-            if (!process.env[key]) {
-                process.env[key] = String(value);
-                count++;
-            }
-        }
+        const local = (process.env.MODE ?? "online").toLowerCase() === "local";
+        const config = await loadConfig(local);
+        const count = applyToEnv(config);
         console.log(
-            `Loaded ${count} secrets from "${secretName}" (${Object.keys(secrets).length} total)`
+            `block ${config.block}: ${count} environment variables set from ` +
+                `${Object.keys(config.settings).length} settings and ${Object.keys(config.apiKeys).length} API keys`,
         );
     } catch (err) {
-        console.error("Failed to load secrets from Secrets Manager:", err.message);
+        console.error("Failed to load the configuration:", err.message);
         process.exit(1);
     }
 }

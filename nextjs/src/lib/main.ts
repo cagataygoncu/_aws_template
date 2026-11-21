@@ -33,17 +33,14 @@ export function f1(input: Record<string, unknown>): string {
  * The one function every entrypoint calls, so the behaviour is the same
  * however this is deployed. Mirrors process_request in src/main.py.
  *
- * The secret is already read by server.mjs before Next starts, which merges it
- * into process.env - so anything it carries is read from there rather than
- * fetched again per request.
+ * The configuration is already loaded by server.mjs before Next starts
+ * (config.mjs), which puts its settings and API keys into process.env - so
+ * they are read from there rather than fetched again per request.
  */
 export function processRequest(eventData: unknown, mode?: Mode): string {
     mode = mode ?? getMode();
 
-    if (mode === "online") {
-        const secretName = process.env.SECRET_NAME;
-        console.log(`online - settings come from "${secretName}", loaded at startup by server.mjs`);
-    }
+    console.log(`${mode} - block ${process.env.CONFIG_BLOCK ?? "(from container_config.env)"}, loaded at startup by server.mjs`);
 
     const input = { event_data: eventData };
     console.log(`input: ${JSON.stringify(input)}`);

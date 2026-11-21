@@ -145,7 +145,7 @@ missing file does not fail the deployment — it fails the task minutes later
 with `ResourceInitializationError`.
 
 It is configuration, never secrets. Put those in Secrets Manager and read them
-with the task role.
+with the task role - see **Configuration** below.
 
 The `lambda` target uses the same file, by a different route: Lambda has no S3
 environment file — that is an ECS task-definition feature — so `make
@@ -159,36 +159,91 @@ whether the two are in step.
 Both read `TARGET` from `project.env`, so neither needs the target spelled out;
 pass one positionally only to act on a target this project is not set to.
 
-### The config object
+### Configuration: the secret, the config object, the block
 
-A service usually needs more than a handful of variables: endpoints, feature
-blocks, a list of processors. That belongs in a JSON object in S3 rather than in
-the environment file, and `CONFIG_BUCKET` and `CONFIG_KEY` in
-`container_config.env` name it:
+Three pieces. `container_config.env` says where the other two are, the secret
+holds the credentials and API keys, and the config object holds everything
+else:
 
+| Where | What |
+| --- | --- |
+| Secrets Manager, named by `AWS_SECRET_NAME` | credentials, API keys - nothing else |
+| `s3://<CONFIG_BUCKET>/<CONFIG_KEY>` (local copy `services/<basename of CONFIG_KEY>`) | every other setting, as JSON: profiles and blocks |
+| `container_config.env` | `AWS_SECRET_NAME`, `CONFIG_BUCKET`, `CONFIG_KEY`, `CONFIG_BLOCK` |
+
+A secret has a size limit, and settings do not need one: keeping only
+credentials and keys in it leaves the settings free to grow, and lets them be
+read, reviewed and versioned like code.
+
+The secret, keyed by ids of your choosing:
+
+```json
+{
+    "credentials": {
+        "cred_1": { "username": "gig", "password": "..." }
+    },
+    "api_keys": {
+        "api_key_1": "<key>"
+    }
+}
 ```
-CONFIG_BUCKET=gig-config
-CONFIG_KEY=my-service/my_service.json
-```
 
-The local copy is `services/<basename of CONFIG_KEY>` — here
-`services/my_service.json` — so one value names both ends. `make sync-config`
-uploads the environment file and the object together, and `make config` reports
-both, including whether the remote copy still matches the local one.
-
-Naming it here rather than in the secret means the deployment carries its own
+Nothing in the secret says where anything is: the deployment carries its own
 config location, so a second deployment reading a different object needs no
-second secret. Keep secrets out of it: it is an S3 object like the environment
-file, and passwords and API keys belong in Secrets Manager under `SECRET_NAME`.
+second secret. A setting names a credential by id - `"NATS_CREDENTIAL":
+"cred_1"` - so the same user name can sit under two ids with a different
+password each. Any setting ending in `_CREDENTIAL` is checked at startup: an id
+the secret does not hold fails it.
 
-Every target reads the object from S3, `lambda` included. Only the *environment
-file* differs between them: on `lambda` it travels with the template as
-`EnvironmentVariables` rather than being uploaded, which is how `CONFIG_BUCKET`
-and `CONFIG_KEY` still reach the function. The object itself is uploaded to S3
-either way, and the execution role already has `S3BucketList` covering it.
+The config object, `services/service_settings.json` to start with:
 
-Leave both keys empty when the service reads no such object — neither command
-then mentions it.
+```json
+{
+    "_README": { "WORKERS": "How many requests the service works on at once." },
+    "profiles": {
+        "default": { "EXAMPLE_ENDPOINT": "https://example.com", "EXAMPLE_CREDENTIAL": "cred_1" }
+    },
+    "service": { "PROFILE": "default", "WORKERS": 4 }
+}
+```
+
+- `CONFIG_BLOCK` picks the block a deployment runs - `service` here. A second
+  deployment of the same code can run another block from the same object.
+- A block may name a `PROFILE`: settings several blocks share. The block's own
+  keys win over its profile's.
+- `_README` documents every key, in the file itself.
+
+Each language reads it the same way, with a loader the template keeps in step
+across languages: `src/config.py`, `src/app/config.go`, `src/config.ts`,
+`config.mjs` (nextjs), `lib/config.ex`, `src/config.cpp`. Everything is read
+once, at startup, so a change takes a restart. With `MODE=local` nothing comes
+from AWS: the loader reads the local copy, has no credentials, and takes
+`CONFIG_KEY` and `CONFIG_BLOCK` from `container_config.env` when the
+environment lacks them - so F5 and a local run need no setup. nextjs puts the
+settings, and each API key under its id, into `process.env` before Next starts,
+so `{"api_keys": {"AUTH_SECRET": "..."}}` gives NextAuth its `AUTH_SECRET`. The
+C++ loader reads only the local copy: online mode needs the AWS SDK for C++,
+which the layer does not ship.
+
+A unit test resolves the shipped block, so a broken file fails `make test` and
+the pipeline. Editing config:
+
+```zsh
+# edit services/service_settings.json, then
+make test
+make sync-config      # uploads container_config.env and the config object it names
+```
+
+`make sync-config` uploads the environment file and the object together, and
+`make config` reports both, including whether the remote copy still matches the
+local one. Every target reads the object from S3, `lambda` included: on
+`lambda` the environment file travels with the template as
+`EnvironmentVariables`, which is how `CONFIG_BUCKET` and `CONFIG_KEY` still
+reach the function, and the execution role's `S3BucketList` covers the object.
+
+Leave `CONFIG_BUCKET` and `CONFIG_KEY` empty when the service reads no such
+object - neither command then mentions it - and `AWS_SECRET_NAME` empty when it
+has no secrets.
 
 ## Development
 
@@ -779,15 +834,15 @@ make invoke JSON='{"test": 1}'
 # anything the code reads itself goes in RUN_ENV, which REPLACES the default
 # MODE=local - so keep MODE= in whatever you pass
 make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=task \
-    RUN_ENV="MODE=local SECRET_NAME=my-settings DEBUG=1"
+    RUN_ENV="MODE=local AWS_SECRET_NAME=my-settings DEBUG=1"
 
 # the online path, against the real services it needs
 make local-run ENTRYPOINT={{RUN_ENTRYPOINT_TASK}} CMD="{{RUN_CMD_TASK}}" TARGET=task \
-    RUN_ENV="MODE=online SECRET_NAME=my-settings"
+    RUN_ENV="MODE=online AWS_SECRET_NAME=my-settings"
 
 # a service with no local mode: give it what it actually reads at startup
 make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" TARGET=server \
-    RUN_ENV="SECRET_NAME=my-service-api-keys LOG_LEVEL=debug"
+    RUN_ENV="AWS_SECRET_NAME=my-service-api-keys LOG_LEVEL=debug"
 
 make local-logs
 make shell
@@ -836,8 +891,8 @@ no `MODE` — this is the shape of failure when they are missing:
 ```
 tournament-simulator-local exited (1) - nothing is listening on 8080
 
-    INF Environment variables LOG_LEVEL= SECRET_NAME=
-    ERR Failed to start server error="SECRET_NAME is not set"
+    INF Environment variables LOG_LEVEL= AWS_SECRET_NAME=
+    ERR Failed to start server error="AWS_SECRET_NAME is not set"
 ```
 
 The container ran, logged what it was given, and stopped. `make local-run`
@@ -845,7 +900,7 @@ prints the exit code and the last lines of the log for exactly this reason:
 
 ```zsh
 make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" \
-    RUN_ENV="SECRET_NAME=my-service-api-keys"
+    RUN_ENV="AWS_SECRET_NAME=my-service-api-keys"
 ```
 
 The values the *deployed* container gets are in `container_config.env`, which

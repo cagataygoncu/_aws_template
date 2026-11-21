@@ -428,7 +428,9 @@ info() {
 #   lint
 #
 LINT_TOOL="{{LINT_TOOL}}"
-LINT_COMMAND="{{LINT_COMMAND}}"
+# Single quotes: the command runs at lint time, not when this file loads - a
+# $(find ...) in it would otherwise expand here, and eval would run the list.
+LINT_COMMAND='{{LINT_COMMAND}}'
 LINT_INSTALL="{{LINT_INSTALL}}"
 
 # `make test`: the unit tests, run inside the service base image - the
@@ -2152,7 +2154,7 @@ local_build() {
 # Application environment variables come from RUN_ENV, since the container
 # gets only the AWS ones by default:
 #
-#   RUN_ENV="SECRET_NAME=my-settings DEBUG=1" run "" src.main_lambda.lambda_handler_1 lambda
+#   RUN_ENV="AWS_SECRET_NAME=my-settings DEBUG=1" run "" src.main_lambda.lambda_handler_1 lambda
 #
 local_run() {
     local entrypoint=$1 cmd=$2 target="${3:-$TARGET}"
@@ -2401,13 +2403,13 @@ only the AWS variables otherwise. It REPLACES the default (currently
 "${RUN_ENV:-<unset>}"), so keep anything you still need:
 
   make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" \\
-      RUN_ENV="MODE=local SECRET_NAME=my-service-settings"
+      RUN_ENV="MODE=local AWS_SECRET_NAME=my-service-settings"
 
 A service with no local mode needs whatever it actually reads at startup,
 MODE included or not:
 
   make local-run ENTRYPOINT={{RUN_ENTRYPOINT_SERVER}} CMD="{{RUN_CMD_SERVER}}" \\
-      RUN_ENV="SECRET_NAME=my-service-api-keys LOG_LEVEL=debug"
+      RUN_ENV="AWS_SECRET_NAME=my-service-api-keys LOG_LEVEL=debug"
 
 It is a space-separated KEY=VALUE list; a value containing spaces needs
 docker run by hand.

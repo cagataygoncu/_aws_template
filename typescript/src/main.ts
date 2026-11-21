@@ -1,6 +1,5 @@
-import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
-
 import { f1 } from "../lib/package_a/module_x";
+import { getConfig } from "./config";
 
 /**
  * Where the service gets the things it depends on. Deployed code is online; a
@@ -29,18 +28,14 @@ export function getMode(): Mode {
 export async function processRequest(eventData: unknown, mode?: Mode): Promise<string> {
     mode = mode ?? getMode();
 
-    if (mode === "online") {
-        // Anything that must not sit in the environment file - endpoints,
-        // credentials, keys - comes from Secrets Manager, read with the task
-        // role. Log that it was read, never what it contained.
-        const secretName = process.env.SECRET_NAME;
-        const client = new SecretsManagerClient({});
-        const { SecretString } = await client.send(
-            new GetSecretValueCommand({ SecretId: secretName }),
-        );
-        const settings = JSON.parse(SecretString ?? "{}");
-        console.log(`read ${Object.keys(settings).length} settings from ${secretName}`);
-    }
+    // The settings: the block of the config object container_config.env
+    // names, with credentials from the secret (config.ts). Read once, then
+    // kept. Log what was read, never a credential or key.
+    const config = await getConfig(mode === "local");
+    console.log(
+        `block ${config.block}: ${Object.keys(config.settings).length} settings, ` +
+            `${Object.keys(config.credentials).length} credentials`,
+    );
 
     const input = { event_data: eventData };
     console.log(`input: ${JSON.stringify(input)}`);

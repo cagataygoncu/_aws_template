@@ -27,6 +27,7 @@
 !/tsconfig.json
 # nextjs: `COPY . .` in its build stage needs the app's config and server.
 !/server.mjs
+!/config.mjs
 !/next.config.mjs
 !/next-env.d.ts
 !/postcss.config.mjs

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GIGTennis/gig_utils_go/security"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -53,18 +52,14 @@ func GetMode() Mode {
 // task loop and the Lambda handler all funnel into it, so the behaviour is the
 // same however this is deployed. It mirrors process_request in src/main.py.
 func ProcessRequest(ctx context.Context, eventData string, mode Mode) (string, error) {
-	if mode == ModeOnline {
-		// The one gig_utils call this template demonstrates: anything that
-		// must not sit in the environment file - endpoints, credentials, keys
-		// - comes from Secrets Manager, read with the task role. Log that it
-		// was read, never what it contained.
-		secretName := os.Getenv("SECRET_NAME")
-		var settings map[string]any
-		if err := security.GetSecretAsStruct(ctx, secretName, os.Getenv("AWS_REGION"), &settings); err != nil {
-			return "", fmt.Errorf("read %s from secrets manager: %w", secretName, err)
-		}
-		log.Printf("read %d settings from %s", len(settings), secretName)
+	// The settings: the block of the config object container_config.env
+	// names, with credentials from the secret (config.go). Read once, then
+	// kept. Log what was read, never a credential or key.
+	config, err := GetConfig(ctx, mode == ModeLocal)
+	if err != nil {
+		return "", fmt.Errorf("configuration: %w", err)
 	}
+	log.Printf("block %s: %d settings, %d credentials", config.Block, len(config.Settings), len(config.Credentials))
 
 	input := map[string]any{"event_data": eventData}
 	log.Printf("input: %v", input)

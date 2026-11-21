@@ -83,5 +83,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/server.mjs ./
+# server.mjs loads the configuration with it, before Next starts.
+COPY --from=builder /app/config.mjs ./
 
 EXPOSE 3000

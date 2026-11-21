@@ -1,6 +1,8 @@
 // Mirrors the Python and Go stubs: one process_request() that every target
 // funnels into, so the behaviour is the same however this is deployed.
 
+#include <openssl/evp.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -10,7 +12,7 @@
 #include <sstream>
 #include <string>
 
-#include <openssl/evp.h>
+#include "config.hpp"
 
 namespace {
 
@@ -78,15 +80,12 @@ std::string f1(const std::map<std::string, std::string>& input) {
 }  // namespace
 
 std::string process_request(const std::string& event_data, Mode mode) {
-    if (mode == Mode::Online) {
-        // Where the AWS lookups belong: anything that must not sit in the
-        // environment file - endpoints, credentials, keys - comes from
-        // Secrets Manager, read with the task role. The Python and Go layers
-        // do this through gig_utils; this one has no AWS SDK linked yet, so
-        // the call goes here when the service needs one. Log that a secret
-        // was read, never what it contained.
-        std::clog << "main: online - add the Secrets Manager read here\n";
-    }
+    // The settings: the block of the config object container_config.env
+    // names (config.hpp). Read once, then kept. Log what was read, never a
+    // credential or key.
+    const config::Config& config = config::get_config(mode == Mode::Local);
+    std::clog << "main: block " << config.block << ": " << config.settings.size() << " settings, "
+              << config.credentials.size() << " credentials\n";
 
     const std::map<std::string, std::string> input{{"event_data", event_data}};
     std::clog << "main: input: " << to_string(input) << "\n";

@@ -1,11 +1,10 @@
-import json
 import os
 from enum import Enum
 
 from gig_utils_core.logger_config import get_logger
-from gig_utils_security.secrets import get_secret_value
 
 from lib.package_a import module_x
+from src.config import get_config
 
 
 class Mode(Enum):
@@ -29,14 +28,11 @@ def process_request(event_data, mode=None):
 
     mode = mode or get_mode()
 
-    if mode == Mode.ONLINE:
-        # What this template demonstrates about gig_utils: anything that must
-        # not sit in the environment file - endpoints, credentials, keys -
-        # comes from Secrets Manager, read with the task role. Log that it was
-        # read, never what it contained.
-        secret_name = os.getenv("SECRET_NAME")
-        settings = json.loads(get_secret_value(secret_name))
-        logger.info(f"read {len(settings)} settings from {secret_name}")
+    # The settings: the block of the config object container_config.env names,
+    # with credentials from the secret (src/config.py). Read once, then cached.
+    # Log what was read, never a credential or key.
+    config = get_config(local=mode == Mode.LOCAL)
+    logger.info(f"block {config.block}: {len(config.settings)} settings, {len(config.credentials)} credentials")
 
     input = {"event_data": event_data}
     logger.info(f"input: {input}")

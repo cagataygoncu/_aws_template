@@ -1,0 +1,21 @@
+{
+    "_README": {
+        "about": "The config object of {{PROJECT_NAME}}: every setting that is not secret. container_config.env names it (CONFIG_BUCKET, CONFIG_KEY) and picks the block this deployment runs (CONFIG_BLOCK). Edit this file, run the unit tests, then make sync-config to upload it. Read once at startup.",
+        "profiles": "Settings several blocks share, by profile name. A block names one with PROFILE; the block's own keys win.",
+        "service": "The block a deployment runs when CONFIG_BLOCK=service.",
+        "PROFILE": "The profile a block inherits from. Optional.",
+        "WORKERS": "How many requests the service works on at once.",
+        "EXAMPLE_ENDPOINT": "An endpoint the service calls. Replace with the real settings.",
+        "EXAMPLE_CREDENTIAL": "A credential id, not a password: credentials.<id> in the secret named by AWS_SECRET_NAME. Any key ending in _CREDENTIAL is looked up there."
+    },
+    "profiles": {
+        "default": {
+            "EXAMPLE_ENDPOINT": "https://example.com",
+            "EXAMPLE_CREDENTIAL": "cred_1"
+        }
+    },
+    "service": {
+        "PROFILE": "default",
+        "WORKERS": 4
+    }
+}

@@ -50,7 +50,15 @@ also has the {{LANGUAGE}} commands and debug configurations.
 4. Need a Linux library? Add its Debian package to `system_packages.txt`
    (runtime) or `system_packages_build.txt` (build). Then work in the
    devcontainer: VS Code, *Reopen in Container*.
-5. Change a tool version: edit `mise.toml`, then run:
+5. Change a setting: edit `services/service_settings.json` (secrets go in
+   Secrets Manager, never there), then run:
+
+   ```zsh
+   make test
+   make sync-config
+   ```
+
+6. Change a tool version: edit `mise.toml`, then run:
 
    ```zsh
    make sync-versions

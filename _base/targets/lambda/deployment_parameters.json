@@ -12,7 +12,7 @@
     "NetworkStackName": "aolabs",
     "SubnetIds": "",
     "SecurityGroupIds": "",
-    "EnvironmentVariables": "{ \"SERVICE_NAME\": \"{{PROJECT_NAME}}\", \"SECRET_NAME\": \"\", \"ENVIRONMENT\": \"dev\" } ",
+    "EnvironmentVariables": "{ \"SERVICE_NAME\": \"{{PROJECT_NAME}}\", \"AWS_SECRET_NAME\": \"\", \"ENVIRONMENT\": \"dev\" } ",
     "TemplateVersion": "v1.10.16"
   }
 }
