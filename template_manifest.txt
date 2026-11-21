@@ -59,8 +59,8 @@ seed      tailwind.config.ts
 template  Makefile
 template  make/*
 template  README.md
-# The development guide: shared (_base/docs/) and per language (docs/language.md).
-template  docs/development*
+template  NOTES.md
+# The language's run, test and debug commands.
 template  docs/language.md
 template  .dockerignore
 template  .gitignore
@@ -88,3 +88,4 @@ template  .gdbinit
 retired   environment.yaml
 retired   tests/integration/*
 retired   .github/*
+retired   docs/development*

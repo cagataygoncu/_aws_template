@@ -1,7 +1,7 @@
 # C++ in {{PROJECT_NAME}}
 
-The C++ side of [development.md](development.md): the tools, how to run,
-test and debug. Tool versions are in `mise.toml`.
+The C++ commands behind the steps in [README.md](../README.md): the tools,
+how to run, test and debug. Reasons and details: [NOTES.md](../NOTES.md). Tool versions are in `mise.toml`.
 
 ## Tools
 

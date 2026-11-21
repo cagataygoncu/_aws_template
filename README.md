@@ -29,7 +29,7 @@ _aws_template/
 ├── _base/                  # shared by every language
 │   ├── Makefile, make/     # project commands: commands.sh, versions.sh, setup_local_dev_env.sh
 │   ├── targets/            # common/ (cicd, buildspecs), lambda/, service/{task,server}/
-│   ├── docs/               # development.md + its .mmd/.svg diagrams (shipped)
+│   ├── README.md, NOTES.md # the project's step-by-step README and its details (shipped)
 │   └── project.env, container_config.env, gitignore, .dockerignore
 ├── python/ golang/ typescript/ cpp/ nextjs/ elixir/   # language layers, each with:
 │   ├── layer.env           # placeholder values (never shipped)
