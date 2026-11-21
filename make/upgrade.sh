@@ -211,7 +211,7 @@ run() {
         if ! same "$mise_old" "$mise_new" && ! same "$mise_project" "$mise_new"; then
             if same "$mise_project" "$mise_old"; then
                 cp -p "$mise_new" "$mise_project"
-                note template mise.toml "versions moved to the template's new defaults"
+                note template mise.toml "updated - the project had not changed it (any version changes are the template's new defaults)"
             else
                 cp "$mise_project" "$work/merge"
                 if git merge-file -q "$work/merge" "$mise_old" "$mise_new"; then
