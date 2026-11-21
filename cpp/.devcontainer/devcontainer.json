@@ -43,6 +43,12 @@
         "source=/tmp/.X11-unix,target=/tmp/.X11-unix:,readonly,type=bind"
     ],
     // Use 'initializeCommand' to run commands on the host machine including container creation and on subsequent starts.
+    // Private GitHub repositories over HTTPS, when you use a token instead of
+    // ssh (make/github_env.sh). remoteEnv, not containerEnv: never baked into
+    // the container. Empty when the Mac has none, and then ssh is used.
+    "remoteEnv": {
+        "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}"
+    },
     "containerEnv": {
         // `docker run -v` is resolved by the host's daemon - see commands.sh.
         "AWS_CONFIG_HOST_DIR": "${localEnv:HOME}/.aws"

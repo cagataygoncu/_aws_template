@@ -260,7 +260,8 @@ Dockerfile.
 ### Private packages
 
 Shared code lives in private GitHub repositories (`github.com/GIGTennis/...`),
-fetched over ssh. Declare one in the language's own dependency file:
+fetched with a token or over ssh. Declare one in the language's own
+dependency file - ssh URLs work for both routes:
 
 | Language | Where | Example |
 |---|---|---|
@@ -270,25 +271,43 @@ fetched over ssh. Declare one in the language's own dependency file:
 | elixir | `mix.exs` | `{:<name>, git: "git@github.com:GIGTennis/<repo>.git", tag: "<tag>"}` |
 | C++ | `CMakeLists.txt` | `FetchContent_Declare(<name> GIT_REPOSITORY git@github.com:GIGTennis/<repo>.git GIT_TAG <tag>)` |
 
-Every place that installs dependencies reaches GitHub with your ssh key:
+Git fetches them in every language, by one of two routes, chosen by
+`make/github_env.sh`:
 
-| Where | How |
-|---|---|
-| `make local-dev-setup` | checks `ssh -T git@github.com` first, and stops with GitHub's own message if the key is refused |
-| `make test`, the devcontainer | the ssh agent is forwarded into the container |
-| `make local-build`, the pipeline | `docker build --ssh`: each install step mounts the agent (the pipeline loads its key from Secrets Manager) |
+| Route | When | How |
+|---|---|---|
+| **Token** (HTTPS) | `GITHUB_TOKEN` is set | git rewrites `git@github.com:` and `ssh://git@github.com/` URLs to HTTPS, and a credential helper answers with the token. Set through `GIT_CONFIG_*` environment variables only: nothing is written to disk or into a URL |
+| **ssh** | `GITHUB_TOKEN` is empty | your ssh key, from the agent or `~/.ssh/config`. Go modules in `GOPRIVATE` are rewritten to ssh |
 
-Go also needs to know which modules are private: `GOPRIVATE` and a git
-rewrite to ssh are set in `mise.toml`'s `[env]` (for the shell and `make`) and
-in `.vscode/settings.json` (`go.toolsEnvVars`, for gopls). Another
-organisation means editing both.
-
-If `make local-dev-setup` says ssh cannot log in to GitHub, load your key and
-run it again:
+On your Mac, the token from the GitHub CLI is the simplest:
 
 ```zsh
-ssh-add -l                         # the keys the agent holds
-ssh-add ~/.ssh/<your GitHub key>
+gh auth login                                   # once
+export GITHUB_TOKEN="$(gh auth token)"          # in ~/.zshrc, before mise activate
+```
+
+A fine-grained token with read access to the repositories works too.
+
+Where each place gets access:
+
+| Where | Token route | ssh route |
+|---|---|---|
+| your shell, `make` | `mise.toml` sources `make/github_env.sh` | the same |
+| `make local-dev-setup` | checks the token with the GitHub API first | checks `ssh -T git@github.com` first |
+| `make test` | the token and git settings are passed into the container | the ssh agent is forwarded |
+| devcontainer | `remoteEnv` passes `GITHUB_TOKEN` in | the ssh agent is forwarded |
+| `make local-build` | a BuildKit secret (`--secret id=github_token`): never in an image layer | `docker build --ssh` |
+| the pipeline | set `GitHubTokenSecretArn` in each target's `cicd_parameters.json` to a Secrets Manager secret holding the token, then `make deploy-cicd`. A GitHub App installation token suits CI best: short-lived and not a person's | the ssh key in Secrets Manager, as before |
+
+Go also needs to know which modules are private: `GOPRIVATE` is set in
+`mise.toml`'s `[env]` and in `.vscode/settings.json` (`go.toolsEnvVars`, for
+gopls). Another organisation means editing both.
+
+If `make local-dev-setup` says GitHub refused access, fix the route it checked:
+
+```zsh
+export GITHUB_TOKEN="$(gh auth token)"           # token route
+ssh-add ~/.ssh/<your GitHub key>                 # ssh route (with GITHUB_TOKEN unset)
 ```
 
 ### Tool versions

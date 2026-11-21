@@ -43,10 +43,13 @@ WORKDIR /app
 
 # Build a CGO-disabled static binary named `bootstrap` — the entrypoint expected
 # by AWS Lambda's `provided.al2` and `provided.al2023` runtimes.
-RUN --mount=type=ssh \
-    git config --global url."git@github.com:GIGTennis/".insteadOf "https://github.com/GIGTennis/" && \
+# How git reaches private GitHub repositories - a token (the github_token
+# build secret) or the ssh agent: make/github_env.sh.
+COPY make/github_env.sh /tmp/github_env.sh
+RUN --mount=type=ssh --mount=type=secret,id=github_token,required=false \
     export GOPRIVATE=github.com/GIGTennis/* && \
     export GONOSUMDB=github.com/GIGTennis/* && \
+    export GITHUB_TOKEN="$(cat /run/secrets/github_token 2> /dev/null)" && . /tmp/github_env.sh && \
     export GIT_SSH_COMMAND="ssh -v" && \
     go mod tidy && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \

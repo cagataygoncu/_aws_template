@@ -41,10 +41,13 @@ COPY ./go.sum /app/go.sum
 
 WORKDIR /app
 
-RUN --mount=type=ssh \
-    git config --global url."git@github.com:GIGTennis/".insteadOf "https://github.com/GIGTennis/" && \
+# How git reaches private GitHub repositories - a token (the github_token
+# build secret) or the ssh agent: make/github_env.sh.
+COPY make/github_env.sh /tmp/github_env.sh
+RUN --mount=type=ssh --mount=type=secret,id=github_token,required=false \
     export GOPRIVATE=github.com/GIGTennis/* && \
     export GONOSUMDB=github.com/GIGTennis/* && \
+    export GITHUB_TOKEN="$(cat /run/secrets/github_token 2> /dev/null)" && . /tmp/github_env.sh && \
     export GIT_SSH_COMMAND="ssh -v" && \
     go mod tidy \
     && go build -o /app/build/task   ./src/main_task \

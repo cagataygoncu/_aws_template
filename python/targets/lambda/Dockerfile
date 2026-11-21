@@ -39,7 +39,11 @@ fi
 
 COPY requirements.txt requirements.txt
 
-RUN --mount=type=ssh --mount=type=cache,target=/root/.cache/pip \
+# How git reaches private GitHub repositories - a token (the github_token
+# build secret) or the ssh agent: make/github_env.sh.
+COPY make/github_env.sh /tmp/github_env.sh
+RUN --mount=type=ssh --mount=type=secret,id=github_token,required=false --mount=type=cache,target=/root/.cache/pip \
+    export GITHUB_TOKEN="$(cat /run/secrets/github_token 2> /dev/null)" && . /tmp/github_env.sh && \
     export GIT_SSH_COMMAND="ssh -v" && \
     pip3 install --upgrade -r requirements.txt
 

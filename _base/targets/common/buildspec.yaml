@@ -12,20 +12,26 @@ phases:
   install:
     runtime-versions:
       python: 3.12
-    commands:
-      - echo "Retrieving SSH key from Secrets Manager"
-      - >
-        SSH_KEY=$(aws secretsmanager get-secret-value
-        --secret-id arn:aws:secretsmanager:ap-southeast-2:095841671171:secret:gig_service_template_github
-        --query SecretString
-        --output text)
-      - mkdir -p ~/.ssh
-      - echo "$SSH_KEY" > ~/.ssh/id_rsa
-      - chmod 600 ~/.ssh/id_rsa
-      - eval "$(ssh-agent -s)"
-      - ssh-add ~/.ssh/id_rsa
-      - ssh-add -L
-      - ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+    # Private GitHub repositories: with GITHUB_TOKEN (set from Secrets Manager
+    # when the pipeline stack has GitHubTokenSecretArn) the build uses the
+    # token; without it, the ssh key below.
+    commands: |
+      if [ -n "${GITHUB_TOKEN:-}" ]; then
+        echo "Private repositories: GITHUB_TOKEN over HTTPS"
+      else
+        echo "Private repositories: retrieving the SSH key from Secrets Manager"
+        SSH_KEY=$(aws secretsmanager get-secret-value \
+          --secret-id arn:aws:secretsmanager:ap-southeast-2:095841671171:secret:gig_service_template_github \
+          --query SecretString \
+          --output text)
+        mkdir -p ~/.ssh
+        echo "$SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        eval "$(ssh-agent -s)"
+        ssh-add ~/.ssh/id_rsa
+        ssh-add -L
+        ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+      fi
   pre_build:
     commands: |
       echo Logging in to Amazon ECR...
@@ -61,7 +67,6 @@ phases:
       IMAGE_NAME=$ECR_REPOSITORY_NAME:$IMAGE_TAG
       echo "IMAGE_NAME = ${IMAGE_NAME}"
 
-      export GITHUB_TOKEN=''
       DOCKER_BUILDKIT=1
 
       # Create and use buildx builder with docker-container driver
@@ -76,9 +81,9 @@ phases:
       --progress=plain \
       --build-arg ENV=prod \
       --build-arg DEBUG=false \
-      --build-arg GITHUB_TOKEN=$GITHUB_TOKEN \
       --build-arg BASE_IMAGE_URI=$BASE_IMAGE_URI \
-      --ssh default=$HOME/.ssh/id_rsa \
+      ${GITHUB_TOKEN:+--secret id=github_token,env=GITHUB_TOKEN} \
+      $([ -f "$HOME/.ssh/id_rsa" ] && echo "--ssh default=$HOME/.ssh/id_rsa") \
       --cache-from type=registry,ref=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$ECR_REPOSITORY_LATEST_TAG \
       --cache-from type=registry,ref=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:buildcache \
       --cache-to type=inline \

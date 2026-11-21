@@ -30,7 +30,10 @@ COPY ./.devcontainer/requirements_dev.txt /.devcontainer/requirements_dev.txt
 # runtime dependencies. Dev-only tools stay in .devcontainer/requirements_dev.txt.
 COPY requirements.txt requirements.txt
 
-RUN --mount=type=ssh export GIT_SSH_COMMAND="ssh -v" && pip3 install --no-cache-dir --upgrade -r requirements.txt
+# How git reaches private GitHub repositories - a token (the github_token
+# build secret) or the ssh agent: make/github_env.sh.
+COPY make/github_env.sh /tmp/github_env.sh
+RUN --mount=type=ssh --mount=type=secret,id=github_token,required=false export GITHUB_TOKEN="$(cat /run/secrets/github_token 2> /dev/null)" && . /tmp/github_env.sh && export GIT_SSH_COMMAND="ssh -v" && pip3 install --no-cache-dir --upgrade -r requirements.txt
 
 WORKDIR /
 

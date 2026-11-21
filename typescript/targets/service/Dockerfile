@@ -27,7 +27,10 @@ COPY package.json package-lock.json* ./
 # Private packages come from GitHub over ssh: the agent is mounted for this
 # step only, and GitHub's host key is trusted first. Without git and ssh (in
 # system_packages_build.txt) the key step is skipped and npm runs as before.
-RUN --mount=type=ssh (mkdir -p -m 0700 ~/.ssh \
+# How git reaches private GitHub repositories - a token (the github_token
+# build secret) or the ssh agent: make/github_env.sh.
+COPY make/github_env.sh /tmp/github_env.sh
+RUN --mount=type=ssh --mount=type=secret,id=github_token,required=false export GITHUB_TOKEN="$(cat /run/secrets/github_token 2> /dev/null)" && . /tmp/github_env.sh && (mkdir -p -m 0700 ~/.ssh \
         && ssh-keyscan github.com >> ~/.ssh/known_hosts) 2> /dev/null || true; \
     npm install
 
@@ -56,7 +59,10 @@ COPY package.json package-lock.json* ./
 # Private packages come from GitHub over ssh: the agent is mounted for this
 # step only, and GitHub's host key is trusted first. Without git and ssh (in
 # system_packages_build.txt) the key step is skipped and npm runs as before.
-RUN --mount=type=ssh (mkdir -p -m 0700 ~/.ssh \
+# How git reaches private GitHub repositories - a token (the github_token
+# build secret) or the ssh agent: make/github_env.sh.
+COPY make/github_env.sh /tmp/github_env.sh
+RUN --mount=type=ssh --mount=type=secret,id=github_token,required=false export GITHUB_TOKEN="$(cat /run/secrets/github_token 2> /dev/null)" && . /tmp/github_env.sh && (mkdir -p -m 0700 ~/.ssh \
         && ssh-keyscan github.com >> ~/.ssh/known_hosts) 2> /dev/null || true; \
     npm install --omit=dev
 

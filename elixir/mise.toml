@@ -23,3 +23,8 @@ erlang = "27"
 # versions here (or `mise upgrade --bump`) and commit.
 uv = "0.13.9"
 "pipx:cfn-lint" = "1.60.1"
+
+[env]
+# Private GitHub repositories: git reaches them with GITHUB_TOKEN over HTTPS
+# when it is set, or over ssh - see make/github_env.sh.
+_.source = "make/github_env.sh"

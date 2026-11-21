@@ -14,15 +14,19 @@ phases:
       echo "TEST_REPORT_DIRECTORY = ${TEST_REPORT_DIRECTORY}"
       echo "TEST_REPORT_FILENAME = ${TEST_REPORT_FILENAME}"
 
-      echo "Retrieving SSH key from Secrets Manager"
-      SSH_KEY=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:ap-southeast-2:095841671171:secret:gig_service_template_github --query SecretString --output text)
-      mkdir -p ~/.ssh
-      echo "$SSH_KEY" > ~/.ssh/id_rsa
-      chmod 600 ~/.ssh/id_rsa
-      eval "$(ssh-agent -s)"
-      ssh-add ~/.ssh/id_rsa
-      ssh-add -L
-      ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+      # Private GitHub repositories: GITHUB_TOKEN when the pipeline stack has
+      # GitHubTokenSecretArn; otherwise the ssh key, forwarded by make test.
+      if [ -z "${GITHUB_TOKEN:-}" ]; then
+        echo "Retrieving SSH key from Secrets Manager"
+        SSH_KEY=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:ap-southeast-2:095841671171:secret:gig_service_template_github --query SecretString --output text)
+        mkdir -p ~/.ssh
+        echo "$SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        eval "$(ssh-agent -s)"
+        ssh-add ~/.ssh/id_rsa
+        ssh-add -L
+        ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+      fi
 
       echo "Running the unit tests: make test"
       ./make/commands.sh test

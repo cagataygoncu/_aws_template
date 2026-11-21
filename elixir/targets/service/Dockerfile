@@ -42,7 +42,10 @@ RUN mix local.hex --force && mix local.rebar --force
 
 # Cache deps separately from app code for faster rebuilds
 COPY mix.exs mix.lock ./
-RUN --mount=type=ssh mix deps.get --only prod && mix deps.compile
+# How git reaches private GitHub repositories - a token (the github_token
+# build secret) or the ssh agent: make/github_env.sh.
+COPY make/github_env.sh /tmp/github_env.sh
+RUN --mount=type=ssh --mount=type=secret,id=github_token,required=false export GITHUB_TOKEN="$(cat /run/secrets/github_token 2> /dev/null)" && . /tmp/github_env.sh && mix deps.get --only prod && mix deps.compile
 
 COPY lib ./lib
 # A project that adds config/ (config.exs, runtime.exs) adds: COPY config ./config

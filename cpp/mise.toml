@@ -28,3 +28,8 @@ ninja = "1.13.2"
 # Not a tool mise installs: the Debian release the images are built on,
 # which is what versions this layer (gcc, cmake and the rest come with it).
 debian = "bookworm"
+
+[env]
+# Private GitHub repositories: git reaches them with GITHUB_TOKEN over HTTPS
+# when it is set, or over ssh - see make/github_env.sh.
+_.source = "make/github_env.sh"

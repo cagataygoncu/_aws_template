@@ -62,10 +62,10 @@ DEPS_COMMAND='{{DEPS_COMMAND}}'
 
 # Dependency files that can name a private GitHub repository. Any of them
 # reaching GitHub over ssh, or naming a module GOPRIVATE covers, means the
-# install needs an ssh login to GitHub.
+# install needs access to GitHub: a token, or an ssh login.
 DEPENDENCY_FILES=(requirements.txt .devcontainer/requirements_dev.txt go.mod package.json mix.exs CMakeLists.txt)
 
-needs_github_ssh() {
+needs_github() {
     local private_ere='git\+ssh://|git@github\.com:|ssh://git@github\.com|"github:'
     # GOPRIVATE (set in mise.toml for go) as a prefix: github.com/GIGTennis/*
     # matches github.com/GIGTennis/ in go.mod.
@@ -81,6 +81,19 @@ needs_github_ssh() {
 # The key may come from the ssh agent or from ~/.ssh/config, so the test is a
 # real login, not ssh-add -l. ssh -T exits 1 even on success (GitHub gives no
 # shell), so its text decides.
+# With GITHUB_TOKEN set, git uses HTTPS and the token (make/github_env.sh):
+# ask the API whether the token is valid.
+check_github_token() {
+    echo "Checking GITHUB_TOKEN with GitHub, for the private packages..."
+    if ! curl -fsS -o /dev/null --max-time 10 \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" https://api.github.com/user; then
+        die "Error: GitHub rejected GITHUB_TOKEN, and this project's dependencies include
+  private packages. Get a fresh one - for example with the GitHub CLI:
+    export GITHUB_TOKEN=\"\$(gh auth token)\"
+  or unset GITHUB_TOKEN to use your ssh key instead."
+    fi
+}
+
 check_github_ssh() {
     echo "Checking ssh access to GitHub, for the private packages..."
     local github
@@ -91,7 +104,8 @@ check_github_ssh() {
   private packages fetched over ssh. ssh -T git@github.com said:
     ${github:-<nothing>}
   Add your GitHub key to the ssh agent, then run make local-dev-setup again:
-    ssh-add ~/.ssh/<your key>"
+    ssh-add ~/.ssh/<your key>
+  Or use a token instead of ssh: export GITHUB_TOKEN=\"\$(gh auth token)\""
     fi
 }
 
@@ -109,8 +123,15 @@ if [[ -n "$DEPS_COMMAND" ]]; then
         die "Error: python resolves to $(command -v python), not ${VIRTUAL_ENV}/bin/python.
   Installing would write into that environment instead. Nothing was installed."
     fi
-    if needs_github_ssh; then
-        check_github_ssh
+    # The route to private repositories (token or ssh), as git will use it.
+    # shellcheck source=/dev/null
+    . ./make/github_env.sh
+    if needs_github; then
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+            check_github_token
+        else
+            check_github_ssh
+        fi
     fi
 
     echo "Installing the dependencies: ${DEPS_COMMAND}"

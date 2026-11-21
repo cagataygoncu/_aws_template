@@ -17,13 +17,11 @@
     },
     "go.lintOnSave": "off",
 
-    // The private-module settings from mise.toml's [env], for the Go tools VS
-    // Code starts itself (gopls), which do not see mise unless VS Code was
-    // launched from a mise-activated shell.
+    // GOPRIVATE from mise.toml's [env], for the Go tools VS Code starts itself
+    // (gopls), which do not see mise unless VS Code was launched from a
+    // mise-activated shell. make local-dev-setup downloads the modules, so
+    // gopls reads them from the module cache.
     "go.toolsEnvVars": {
-        "GOPRIVATE": "github.com/GIGTennis/*",
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "url.git@github.com:GIGTennis/.insteadOf",
-        "GIT_CONFIG_VALUE_0": "https://github.com/GIGTennis/"
+        "GOPRIVATE": "github.com/GIGTennis/*"
     }
 }

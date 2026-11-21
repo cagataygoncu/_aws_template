@@ -72,6 +72,18 @@ if [[ -f mise.toml ]] && command -v mise > /dev/null 2>&1; then
     export PATH
 fi
 
+# How git reaches private GitHub repositories: GITHUB_TOKEN over HTTPS, or ssh.
+# mise has usually applied it already; this covers the pipeline, which has no
+# mise, so GOPRIVATE is read from mise.toml directly.
+if [[ -z "${GOPRIVATE:-}" && -f mise.toml ]]; then
+    GOPRIVATE=$(sed -n 's/^GOPRIVATE *= *"\(.*\)"/\1/p' mise.toml)
+    [[ -n "$GOPRIVATE" ]] && export GOPRIVATE || unset GOPRIVATE
+fi
+if [[ -f ./make/github_env.sh ]]; then
+    # shellcheck source=/dev/null
+    . ./make/github_env.sh
+fi
+
 PROJECT_NAME="${PROJECT_NAME:-}"
 TARGET="${TARGET:-}"
 [[ -n "$PROJECT_NAME" ]] \
@@ -480,6 +492,13 @@ test_unit() {
         mask_args+=(-v "/src/$mask")
     done
 
+    # The private-repository route (make/github_env.sh): the token and git's
+    # settings go in by name, so their values never appear on a command line.
+    local git_args=() name
+    for name in GITHUB_TOKEN GOPRIVATE GIT_TERMINAL_PROMPT $(compgen -e | grep '^GIT_CONFIG_'); do
+        [[ -n "${!name:-}" ]] && git_args+=(-e "$name")
+    done
+
     echo "testing in ${image}"
     echo "running: ${TEST_COMMAND}"
     # ${a[@]+"${a[@]}"}: bash 3.2 treats an empty array as unset under set -u.
@@ -490,6 +509,7 @@ test_unit() {
         -e MODE=local -e PYTHONPATH=/src \
         -e GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new" \
         ${ssh_args[@]+"${ssh_args[@]}"} \
+        ${git_args[@]+"${git_args[@]}"} \
         "$image" sh -c "$TEST_COMMAND"
     if [[ -s "${report_dir}/${report_file}" ]]; then
         echo "tests ok; report: ${report_dir}/${report_file}"
@@ -2090,11 +2110,16 @@ local_build() {
     platform="${BUILD_PLATFORM:-$(build_platform "$target")}"
     require_file "$dockerfile"
 
+    # A token reaches the build as a BuildKit secret: the install steps mount it,
+    # and it never lands in an image layer or the build log.
+    local secret_args=()
+    [[ -n "${GITHUB_TOKEN:-}" ]] && secret_args=(--secret id=github_token,env=GITHUB_TOKEN)
+
     local ssh_args=()
     if [[ -n "${SSH_AUTH_SOCK:-}" ]] && ssh-add -l > /dev/null 2>&1; then
         ssh_args=(--ssh default)
-    else
-        echo "warning: no ssh agent - a build needing private repos will fail" >&2
+    elif [[ -z "${GITHUB_TOKEN:-}" ]]; then
+        echo "warning: no GITHUB_TOKEN and no ssh agent - a build needing private repos will fail" >&2
         echo '  eval "$(ssh-agent -s)" && ssh-add ~/.ssh/github_id_rsa' >&2
     fi
 
@@ -2108,6 +2133,7 @@ local_build() {
     docker build \
         --platform "$platform" \
         ${ssh_args[@]+"${ssh_args[@]}"} \
+        ${secret_args[@]+"${secret_args[@]}"} \
         --build-arg BASE_IMAGE_URI="$base_image" \
         -t "$tag" \
         --file "$dockerfile" \

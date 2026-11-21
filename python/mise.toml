@@ -28,3 +28,6 @@ ruff = "0.17.5"
 # requirements.txt and .devcontainer/requirements_dev.txt into it.
 # --seed puts pip in it: mise makes the venv with uv, whose venvs have none.
 _.python.venv = { path = ".venv", create = true, uv_create_args = ["--seed"] }
+# Private GitHub repositories: git reaches them with GITHUB_TOKEN over HTTPS
+# when it is set, or over ssh - see make/github_env.sh.
+_.source = "make/github_env.sh"

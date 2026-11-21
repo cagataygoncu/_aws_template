@@ -35,6 +35,15 @@ Parameters:
   CodeBuildImage:
     Type: String
 
+  GitHubTokenSecretArn:
+    Type: String
+    Default: ""
+    Description: >-
+      Optional. A Secrets Manager secret holding a GitHub token (a GitHub App
+      installation token or a fine-grained token with read access to the
+      private repositories). When set, the builds fetch private packages over
+      HTTPS with it instead of the ssh key.
+
   RunTests:
     Type: String
     AllowedValues:
@@ -50,6 +59,7 @@ Parameters:
 ####################################################################################
 Conditions:
   ShouldRunTests: !Equals [!Ref RunTests, "true"]
+  HasGitHubToken: !Not [!Equals [!Ref GitHubTokenSecretArn, ""]]
 
 ####################################################################################
 Resources:
@@ -228,6 +238,12 @@ Resources:
         ComputeType: BUILD_GENERAL1_MEDIUM
         Image: !Ref CodeBuildImage
         EnvironmentVariables:
+          - !If
+            - HasGitHubToken
+            - Name: GITHUB_TOKEN
+              Type: SECRETS_MANAGER
+              Value: !Ref GitHubTokenSecretArn
+            - !Ref AWS::NoValue
           - Name: TEST_REPORT_DIRECTORY
             Type: PLAINTEXT
             Value: !Ref TestReportDirectory
@@ -264,6 +280,12 @@ Resources:
         Image: !Ref CodeBuildImage
         PrivilegedMode: true
         EnvironmentVariables:
+          - !If
+            - HasGitHubToken
+            - Name: GITHUB_TOKEN
+              Type: SECRETS_MANAGER
+              Value: !Ref GitHubTokenSecretArn
+            - !Ref AWS::NoValue
           - Name: CFN_ROLE
             Type: PLAINTEXT
             Value: !GetAtt CfnRole.Arn

@@ -16,10 +16,10 @@ also has the {{LANGUAGE}} commands and debug configurations.
    ```
 
 2. Install the toolchain from `mise.toml`, and the dependencies. Private
-   packages come from GitHub over ssh, so load your key first:
+   packages come from GitHub: give it a token, or load your ssh key.
 
    ```zsh
-   ssh-add ~/.ssh/<your GitHub key>
+   export GITHUB_TOKEN="$(gh auth token)"    # or: ssh-add ~/.ssh/<your GitHub key>
    make local-dev-setup
    ```
 
