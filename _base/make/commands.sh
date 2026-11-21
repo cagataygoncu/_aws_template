@@ -2211,6 +2211,18 @@ local_run() {
         env_args+=(--env "$pair")
     done
 
+    # What ECS gives a deployed task: the environment file, which names the
+    # secret, the config object and its block. --env (RUN_ENV, AWS_*) wins
+    # over it. The image has neither the file nor services/, so mount the
+    # local config object where MODE=local looks: services/ in the workdir.
+    local config_args=() workdir
+    [[ -f "$CONFIG_FILE_NAME" ]] && config_args+=(--env-file "$CONFIG_FILE_NAME")
+    if [[ -d services ]]; then
+        workdir=$(docker inspect --format '{{.Config.WorkingDir}}' "$(image_tag "$target")" 2>/dev/null)
+        workdir="${workdir:-/}"
+        config_args+=(--volume "$PWD/services:${workdir%/}/services:ro")
+    fi
+
     # shellcheck disable=SC2086 - cmd is a deliberately word-split argument list.
     docker run --detach \
         --name "$CONTAINER_NAME" \
@@ -2219,6 +2231,7 @@ local_run() {
         --env AWS_REGION="$AWS_REGION" \
         --env AWS_DEFAULT_REGION="$AWS_REGION" \
         --volume "${AWS_CONFIG_HOST_DIR}/:/root/.aws:ro" \
+        ${config_args[@]+"${config_args[@]}"} \
         ${env_args[@]+"${env_args[@]}"} \
         ${entrypoint_args[@]+"${entrypoint_args[@]}"} \
         "$(image_tag "$target")" ${cmd} > /dev/null

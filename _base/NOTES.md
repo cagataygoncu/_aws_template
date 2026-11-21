@@ -403,10 +403,16 @@ the top. At the first failure, go back to editing.
 | 7. Deploy | `git push` / `make push` | the pipeline builds and deploys it | the pipeline stack |
 | 8. Inspect | `make url`, `make logs`, `make events` | it runs in AWS | AWS credentials |
 
-**`MODE=local`.** Deployed code reads its secrets from AWS Secrets Manager.
-With `MODE=local`, it skips that read and uses local values instead. Every
-debug configuration sets it, and `make local-run` sets it by default. Run
-without it to test the real path against AWS.
+**`MODE=local`.** Deployed code reads its config object from S3 and its
+secret from Secrets Manager. With `MODE=local`, it reads the local copy in
+`services/` and no secret. Every debug configuration sets it, and `make
+local-run` sets it by default. Run without it to test the real path against
+AWS.
+
+`make local-run` starts the container the way ECS does: it loads
+`container_config.env` with `--env-file`, and `RUN_ENV` wins over it. The
+image has no `services/`, so `make local-run` mounts it read-only into the
+image's working directory.
 
 ### Debugging
 
