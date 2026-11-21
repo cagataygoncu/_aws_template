@@ -66,9 +66,10 @@ make upgrade ../my_project [v1.1.0]            # merge a release into a project,
 make upgrade-guess ../old_project [WRITE=1]    # stamp a project made before stamps
 ```
 
-Three skills drive these: `cg-aws-template-new`, `cg-aws-template-release`
-(check, diff what projects receive, write notes, tag) and
-`cg-aws-template-upgrade` (upgrade, resolve conflicts, port seed changes).
+Four skills drive these: `cg-aws-template-update` (turn TODO tasks into a
+change plan), `cg-aws-template-new`, `cg-aws-template-release` (check, diff
+what projects receive, write notes, tag) and `cg-aws-template-upgrade`
+(upgrade, resolve conflicts, port seed changes).
 
 A generated project has its own `make help`. The commands you use most:
 `make local-dev-setup`, `make test`, `make lint`, `make local-build`, `make local-run`,
